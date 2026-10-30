@@ -99,10 +99,9 @@
     background: none;
     border: 0;
     border-radius: 6px;
-    width: 1.4em;           /* room for two wide digits in any font */
+    width: 1.4em;           /* starting width; fitDigits() below sizes it exactly */
     text-align: center;
     padding: 0;
-    margin: 0 -0.04em;
     outline: none;
     transition: background-color .15s;
   }
@@ -633,6 +632,23 @@ setInterval(function () {
   if (sState === "running" && mode === "stopwatch") showStopwatch();
   if (mode === "clock") showClockNow();
 }, 50);
+
+/* Size each digit box to exactly fit two digits in the current font,
+   so the colons sit evenly no matter which font or size is showing */
+var measure = document.createElement("canvas").getContext("2d");
+function fitDigits() {
+  var el = document.getElementById("hh"), cs = getComputedStyle(el);
+  measure.font = cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
+  var w = 0;
+  ["00", "44", "88", "11"].forEach(function (d) { w = Math.max(w, measure.measureText(d).width); });
+  var ls = parseFloat(cs.letterSpacing) || 0;
+  ["hh", "mm", "ss"].forEach(function (id) { document.getElementById(id).style.width = Math.ceil(w + ls * 2 + 4) + "px"; });
+}
+window.addEventListener("resize", fitDigits);
+if (document.fonts) document.fonts.ready.then(fitDigits);
+var _applyTimerOpts = applyTimerOpts;
+applyTimerOpts = function () { _applyTimerOpts(); fitDigits(); };
+fitDigits();
 
 showTimer(tSet);
 showStopwatch();
