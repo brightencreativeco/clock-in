@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- COLORS (set with the gear; these are the defaults) ---------- */
+  :root {
+    --bg: #3D452F;
+    --text: #FFFAF8;
+    --soft: rgba(255, 250, 248, 0.78);
+    --line: rgba(255, 250, 248, 0.18);
+    --hover: rgba(255, 250, 248, 0.10);
+    --pop1: #C96A3D;  --pop1-label: #FFFFFF;   /* AC and backspace */
+    --pop2: #E0B04A;  --pop2-label: #1E1E1E;   /* equals */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: "DM Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  /* ---------- LAYOUT ----------
+     The calculator fills whatever size the Notion embed is.
+     Display on top, 5 rows of keys below. */
+  .calc {
+    height: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-rows: minmax(54px, 1.4fr) 5fr;
+    gap: 8px;
+  }
+
+  /* ---------- DISPLAY ---------- */
+  .display {
+    position: relative;
+    background: var(--screen, rgba(0, 0, 0, 0.22));
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    padding: 6px 12px 6px 44px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
+    overflow: hidden;
+    cursor: copy;
+    min-width: 0;
+  }
+  .expr {
+    font-size: 13px;
+    color: var(--soft);
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-align: right;
+    display: flex;
+    justify-content: flex-end;   /* if it's too long, the start gets cut off, not the end */
+  }
+  .expr span { flex: none; }
+  .result {
+    font-family: "DM Mono", ui-monospace, monospace;
+    font-weight: 500;
+    font-size: clamp(22px, min(9vw, 9vh), 44px);
+    line-height: 1.1;
+    white-space: nowrap;
+    letter-spacing: -0.02em;
+  }
+  .copied { position: absolute; left: 12px; bottom: 8px; font-size: 12px; color: var(--soft); opacity: 0; transition: opacity .2s; }
+  .copied.show { opacity: 1; }
+
+  /* ---------- KEYS ---------- */
+  .keys {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(5, 1fr);
+    gap: 7px;
+    min-height: 0;
+  }
+  .key {
+    font: 500 clamp(14px, min(5vw, 4.4vh), 22px)/1 "DM Sans", sans-serif;
+    /* keys are the OPPOSITE of the background: cream keys on green, green keys on cream */
+    color: var(--bg);
+    background: var(--text);
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+    min-height: 0;
+    /* RAISED style: a little ledge underneath */
+    box-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
+    transition: transform .08s, box-shadow .08s, filter .15s, background-color .15s;
+  }
+  .key.op { background: color-mix(in srgb, var(--text) 72%, var(--bg)); font-size: clamp(16px, min(5.6vw, 5vh), 24px); }
+  .key.wide { grid-column: span 2; }
+  .key.pop1 { background: var(--pop1); color: var(--pop1-label); }
+  .key.pop2 { background: var(--pop2); color: var(--pop2-label); font-size: clamp(16px, min(5.6vw, 5vh), 24px); }
+  .key:hover { transform: translateY(-1px); box-shadow: 0 4px 0 rgba(0, 0, 0, 0.28); filter: brightness(1.06); }
+  .key:active, .key.pressed { transform: translateY(3px); box-shadow: 0 0 0 rgba(0, 0, 0, 0.28); filter: brightness(.95); }
+  .key:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+  .key.op:hover { filter: brightness(1.1); }
+
+  /* FLAT style (choose in the gear) */
+  .flat .key { box-shadow: none; }
+  .flat .key:hover { transform: translateY(-1px); box-shadow: none; }
+  .flat .key:active, .flat .key.pressed { transform: scale(.96); }
+
+  /* gear sits inside the display's left corner (Notion's menu covers the top-right) */
+  /* ---------- SETTINGS (gear + panel) ----------
+     The panel always uses its own fixed colors so it stays readable
+     no matter what colors someone picks for the widget. */
+  .gear {
+    position: fixed; top: 6px; right: 6px; z-index: 5;
+    width: 28px; height: 28px; display: grid; place-items: center;
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    color: var(--text); opacity: .35;
+    transition: opacity .15s, transform .3s, background-color .15s;
+  }
+  .gear:hover, .gear:focus-visible { opacity: 1; transform: rotate(40deg); background: var(--line); }
+  .gear svg { width: 16px; height: 16px; }
+  .panel {
+    position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+    background: #FFFAF8; color: #2B2F22;
+    font: 13px/1.4 "DM Sans", system-ui, sans-serif; letter-spacing: 0;
+    padding: 12px 16px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .panel-in { max-width: 420px; margin: 0 auto; }
+  .ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ph span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6B6F62; }
+  .x { background: none; border: 0; font-size: 20px; line-height: 1; color: #2B2F22; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; }
+  .x:hover { background: rgba(43,47,34,.08); }
+  .sec { padding: 10px 0; border-top: 1px solid rgba(43,47,34,.12); }
+  .sl { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #6B6F62; margin-bottom: 8px; }
+  .seg { display: flex; gap: 3px; padding: 3px; background: rgba(43,47,34,.07); border-radius: 999px; margin-bottom: 8px; }
+  .seg button {
+    flex: 1; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40; background: none;
+    border: 0; border-radius: 999px; padding: 7px 8px; cursor: pointer; transition: background-color .15s;
+  }
+  .seg button:hover { background: rgba(43,47,34,.08); }
+  .seg button.on { background: #3D452F; color: #FFFAF8; }
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+  .pick { display: flex; align-items: center; gap: 6px; }
+  .pick input[type=color] {
+    width: 30px; height: 30px; padding: 0; border: 1px solid rgba(43,47,34,.2);
+    border-radius: 50%; overflow: hidden; cursor: pointer; background: none;
+  }
+  .pick input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .pick input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .pick input[type=color]::-moz-color-swatch { border: 0; border-radius: 50%; }
+  .hexin {
+    width: 82px; font: 12px "DM Mono", ui-monospace, monospace; text-transform: uppercase;
+    color: #2B2F22; background: #fff; border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px;
+  }
+  .contrast { font-size: 12px; padding: 7px 10px; border-radius: 8px; margin-top: 4px; }
+  .contrast.good { background: #E7EEDD; color: #2F4A1C; }
+  .contrast.bad { background: #FBE6DA; color: #7A2E0E; }
+  .tog { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; cursor: pointer; }
+  .tog input { position: absolute; opacity: 0; pointer-events: none; }
+  .tog i {
+    width: 34px; height: 20px; border-radius: 999px; background: rgba(43,47,34,.2);
+    position: relative; transition: background-color .15s; flex: none;
+  }
+  .tog i::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .tog input:checked + i { background: #3D452F; }
+  .tog input:checked + i::after { transform: translateX(14px); }
+  .tog input:focus-visible + i { outline: 2px solid #3D452F; outline-offset: 2px; }
+  .resetall {
+    margin-top: 10px; width: 100%; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40;
+    background: none; border: 1px solid rgba(43,47,34,.2); border-radius: 999px; padding: 8px; cursor: pointer;
+    transition: background-color .15s;
+  }
+  .resetall:hover { background: rgba(43,47,34,.06); }
+  .saved { font-size: 11px; color: #6B6F62; text-align: center; margin-top: 8px; }
+  .display .gear { position: absolute; top: 6px; left: 6px; }
+  .pickrow-off { opacity: .4; pointer-events: none; }
+</style>
+</head>
+<body>
+<button class="gear" id="gear" aria-label="Settings" title="Settings">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+<div class="panel" id="panel" hidden>
+ <div class="panel-in">
+  <div class="ph"><span>Settings</span><button class="x" id="closePanel" aria-label="Close settings">×</button></div>
+  <div class="sec">
+    <p class="sl">Colors</p>
+    <div class="seg" id="themeSeg">
+      <button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="custom">Custom</button>
+    </div>
+    <div id="customBox" hidden>
+      <div class="crow"><span>Background</span><span class="pick"><input type="color" id="cBg" aria-label="Background color"><input class="hexin" id="hBg" maxlength="7" aria-label="Background hex code"></span></div>
+      <div class="crow"><span>Text</span><span class="pick"><input type="color" id="cText" aria-label="Text color"><input class="hexin" id="hText" maxlength="7" aria-label="Text hex code"></span></div>
+      <p class="contrast" id="contrast"></p>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="sl">Keys</p>
+    <div class="seg" id="styleSeg"><button data-v="raised">Raised</button><button data-v="flat">Flat</button></div>
+  </div>
+  <div class="sec">
+    <p class="sl">Pops of color</p>
+    <label class="tog"><span>Use pop colors</span><input type="checkbox" id="optPops"><i></i></label>
+    <div id="popBox">
+      <div class="crow"><span>AC + ⌫</span><span class="pick"><input type="color" id="cPop1" aria-label="Clear keys color"><input class="hexin" id="hPop1" maxlength="7" aria-label="Clear keys hex code"></span></div>
+      <div class="crow"><span>= key</span><span class="pick"><input type="color" id="cPop2" aria-label="Equals key color"><input class="hexin" id="hPop2" maxlength="7" aria-label="Equals key hex code"></span></div>
+    </div>
+  </div>
+  <button class="resetall" id="resetAll">Reset to default</button>
+  <p class="saved">Saves automatically on this device. Colors apply to all your Clock In widgets.</p>
+ </div>
+</div>
+<div class="calc">
+  <div class="display" id="display" title="Click to copy the answer">
+    <div class="expr"><span id="expr">&nbsp;</span></div>
+    <div class="result" id="result">0</div>
+  </div>
+  <div class="keys" id="keys">
+    <button class="key pop1" data-k="AC">AC</button>
+    <button class="key pop1" data-k="back" aria-label="Backspace">⌫</button>
+    <button class="key op" data-k="%">%</button>
+    <button class="key op" data-k="÷">÷</button>
+    <button class="key" data-k="7">7</button>
+    <button class="key" data-k="8">8</button>
+    <button class="key" data-k="9">9</button>
+    <button class="key op" data-k="×">×</button>
+    <button class="key" data-k="4">4</button>
+    <button class="key" data-k="5">5</button>
+    <button class="key" data-k="6">6</button>
+    <button class="key op" data-k="−">−</button>
+    <button class="key" data-k="1">1</button>
+    <button class="key" data-k="2">2</button>
+    <button class="key" data-k="3">3</button>
+    <button class="key op" data-k="+">+</button>
+    <button class="key wide" data-k="0">0</button>
+    <button class="key" data-k=".">.</button>
+    <button class="key pop2" data-k="=">=</button>
+  </div>
+</div>
+
+<script>
+var SOFT = 0.78, LINE = 0.18;
+/* =========================================================
+   SETTINGS: shared colors + panel
+   Saved in this browser (localStorage). Colors are shared by
+   every Clock In widget on the same device.
+   ========================================================= */
+var THEMES = { dark: { bg: "#3D452F", text: "#FFFAF8" }, light: { bg: "#FFFAF8", text: "#3D452F" } };
+var COLOR_DEFAULT = { theme: "dark", bg: "#3D452F", text: "#FFFAF8" };
+function loadSet(key, def) {
+  try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || "{}")); }
+  catch (e) { return Object.assign({}, def); }
+}
+function saveSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+var colors = loadSet("clockin-colors", COLOR_DEFAULT);
+
+/* --- color math --- */
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function lum(rgb) {
+  var c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function mix(a, b, t) { return a.map(function (v, i) { return Math.round(v * t + b[i] * (1 - t)); }); }
+
+function currentColors() { return colors.theme === "custom" ? colors : THEMES[colors.theme] || THEMES.dark; }
+function applyColors() {
+  var c = currentColors(), rgb = rgbOf(c.text).join(","), r = document.documentElement.style;
+  r.setProperty("--bg", c.bg);
+  r.setProperty("--text", c.text);
+  r.setProperty("--soft", "rgba(" + rgb + "," + SOFT + ")");
+  r.setProperty("--line", "rgba(" + rgb + "," + LINE + ")");
+  r.setProperty("--hover", "rgba(" + rgb + ",0.10)");
+}
+/* Main text needs 4.5:1, the softer label text needs 3:1 (WCAG guidelines) */
+function checkContrast() {
+  var c = currentColors(), bg = rgbOf(c.bg), tx = rgbOf(c.text);
+  var ok = ratio(tx, bg) >= 4.5 && ratio(mix(tx, bg, SOFT), bg) >= 3;
+  var el = document.getElementById("contrast");
+  el.className = "contrast " + (ok ? "good" : "bad");
+  el.textContent = ok ? "✓ Easy to read" : "Hard to read. Try more difference between light and dark.";
+}
+
+/* --- panel wiring --- */
+var panel = document.getElementById("panel");
+document.getElementById("gear").onclick = function () { panel.hidden = false; syncPanel(); };
+document.getElementById("closePanel").onclick = function () { panel.hidden = true; };
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) { panel.hidden = true; e.stopImmediatePropagation(); } });
+
+function segSelect(id, val) {
+  document.querySelectorAll("#" + id + " button").forEach(function (b) { b.classList.toggle("on", b.dataset.v === val); });
+}
+function syncPanel() {
+  var c = currentColors();
+  segSelect("themeSeg", colors.theme);
+  document.getElementById("customBox").hidden = colors.theme !== "custom";
+  document.getElementById("cBg").value = c.bg; document.getElementById("hBg").value = c.bg.toUpperCase();
+  document.getElementById("cText").value = c.text; document.getElementById("hText").value = c.text.toUpperCase();
+  checkContrast();
+  if (window.syncExtra) syncExtra();
+}
+document.querySelectorAll("#themeSeg button").forEach(function (b) {
+  b.onclick = function () {
+    if (b.dataset.v === "custom" && colors.theme !== "custom") {
+      var c = currentColors(); colors.bg = c.bg; colors.text = c.text;   // start custom from what's showing
+    }
+    colors.theme = b.dataset.v; saveSet("clockin-colors", colors); applyColors(); syncPanel();
+  };
+});
+function setColor(which, val) {
+  val = val.trim(); if (val[0] !== "#") val = "#" + val;
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  colors[which] = val.toLowerCase(); saveSet("clockin-colors", colors); applyColors(); syncPanel();
+}
+document.getElementById("cBg").oninput = function () { setColor("bg", this.value); };
+document.getElementById("cText").oninput = function () { setColor("text", this.value); };
+document.getElementById("hBg").onchange = function () { setColor("bg", this.value); };
+document.getElementById("hText").onchange = function () { setColor("text", this.value); };
+document.getElementById("resetAll").onclick = function () {
+  colors = Object.assign({}, COLOR_DEFAULT); saveSet("clockin-colors", colors); applyColors();
+  if (window.resetExtra) resetExtra();
+  syncPanel();
+};
+/* If colors change in another widget on the same page, match them */
+window.addEventListener("storage", function (e) {
+  if (e.key === "clockin-colors") { colors = loadSet("clockin-colors", COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
+});
+applyColors();
+
+/* =========================================================
+   CALCULATOR SETTINGS (key style + pop colors) - saved on this device
+   ========================================================= */
+/* Display screen: darker than a dark background, a soft tint of the text color on a light one */
+var baseApplyColors = applyColors;
+applyColors = function () {
+  baseApplyColors();
+  var c = currentColors(), bg = rgbOf(c.bg), tx = rgbOf(c.text);
+  var screen = lum(bg) > 0.4 ? mix(tx, bg, 0.12) : mix([0, 0, 0], bg, 0.28);
+  document.documentElement.style.setProperty("--screen", "rgb(" + screen.join(",") + ")");
+};
+applyColors();
+
+var CALC_DEFAULT = { style: "raised", pops: true, pop1: "#c96a3d", pop2: "#e0b04a" };
+var copts = loadSet("clockin-calc", CALC_DEFAULT);
+
+/* Pick a dark or light label for a colored key, whichever is easier to read */
+function labelFor(hexColor) {
+  var c = rgbOf(hexColor);
+  return ratio(c, [255, 255, 255]) >= ratio(c, [30, 30, 30]) ? "#FFFFFF" : "#1E1E1E";
+}
+function applyCalcOpts() {
+  var r = document.documentElement.style;
+  document.body.classList.toggle("flat", copts.style === "flat");
+  if (copts.pops) {
+    r.setProperty("--pop1", copts.pop1); r.setProperty("--pop1-label", labelFor(copts.pop1));
+    r.setProperty("--pop2", copts.pop2); r.setProperty("--pop2-label", labelFor(copts.pop2));
+  } else {   /* no pops: clear keys match the operators, equals is a deeper shade */
+    r.setProperty("--pop1", "color-mix(in srgb, var(--text) 72%, var(--bg))"); r.setProperty("--pop1-label", "var(--bg)");
+    r.setProperty("--pop2", "color-mix(in srgb, var(--text) 22%, var(--bg))"); r.setProperty("--pop2-label", "var(--text)");
+  }
+}
+function saveCalcOpts() { saveSet("clockin-calc", copts); applyCalcOpts(); syncExtra(); }
+function syncExtra() {
+  segSelect("styleSeg", copts.style);
+  document.getElementById("optPops").checked = copts.pops;
+  document.getElementById("popBox").className = copts.pops ? "" : "pickrow-off";
+  document.getElementById("cPop1").value = copts.pop1; document.getElementById("hPop1").value = copts.pop1.toUpperCase();
+  document.getElementById("cPop2").value = copts.pop2; document.getElementById("hPop2").value = copts.pop2.toUpperCase();
+}
+function resetExtra() { copts = Object.assign({}, CALC_DEFAULT); saveCalcOpts(); }
+function setPop(which, val) {
+  val = val.trim(); if (val[0] !== "#") val = "#" + val;
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  copts[which] = val.toLowerCase(); saveCalcOpts();
+}
+document.querySelectorAll("#styleSeg button").forEach(function (b) { b.onclick = function () { copts.style = b.dataset.v; saveCalcOpts(); }; });
+document.getElementById("optPops").onchange = function () { copts.pops = this.checked; saveCalcOpts(); };
+document.getElementById("cPop1").oninput = function () { setPop("pop1", this.value); };
+document.getElementById("cPop2").oninput = function () { setPop("pop2", this.value); };
+document.getElementById("hPop1").onchange = function () { setPop("pop1", this.value); };
+document.getElementById("hPop2").onchange = function () { setPop("pop2", this.value); };
+applyCalcOpts();
+
+/* =========================================================
+   THE MATH
+   The equation is kept as a list of pieces, e.g. ["12", "×", "4"].
+   Pressing = works it out with × and ÷ before + and −.
+   ========================================================= */
+var tokens = [];        // the equation so far
+var justDone = false;   // true right after pressing =
+var lastExpr = "";      // shown small above the answer after =
+
+function isOp(t) { return t === "+" || t === "−" || t === "×" || t === "÷"; }
+function last() { return tokens[tokens.length - 1]; }
+
+function calculate(list) {
+  var nums = [], ops = [];
+  // first pass: handle × and ÷
+  var acc = parseFloat(list[0]);
+  for (var i = 1; i < list.length; i += 2) {
+    var op = list[i], n = parseFloat(list[i + 1]);
+    if (isNaN(n)) break;
+    if (op === "×") acc *= n;
+    else if (op === "÷") { if (n === 0) return null; acc /= n; }
+    else { nums.push(acc); ops.push(op); acc = n; }
+  }
+  nums.push(acc);
+  // second pass: + and −
+  var total = nums[0];
+  for (var j = 0; j < ops.length; j++) total = ops[j] === "+" ? total + nums[j + 1] : total - nums[j + 1];
+  return parseFloat(total.toPrecision(12));   // tidy up tiny rounding errors like 0.1 + 0.2
+}
+function fmt(numStr) {
+  if (numStr === undefined || numStr === "") return "0";
+  if (numStr === "-") return "-";
+  var neg = numStr[0] === "-", s = neg ? numStr.slice(1) : numStr;
+  var parts = s.split("."), whole = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-" : "") + whole + (parts.length > 1 ? "." + parts[1] : "");
+}
+function numToStr(n) {
+  if (Math.abs(n) >= 1e15 || (Math.abs(n) < 1e-9 && n !== 0)) return n.toExponential(6);
+  return String(n);
+}
+
+function press(k) {
+  if (k === "AC") { tokens = []; justDone = false; lastExpr = ""; return render(); }
+
+  if (/^[0-9]$/.test(k)) {
+    if (justDone) { tokens = []; justDone = false; lastExpr = ""; }
+    if (tokens.length && !isOp(last())) {
+      tokens[tokens.length - 1] = last() === "0" ? k : (last().replace("-", "").replace(".", "").length >= 15 ? last() : last() + k);
+    } else tokens.push(k);
+    return render();
+  }
+  if (k === ".") {
+    if (justDone) { tokens = []; justDone = false; lastExpr = ""; }
+    if (tokens.length && !isOp(last())) { if (last().indexOf(".") === -1) tokens[tokens.length - 1] += "."; }
+    else tokens.push("0.");
+    return render();
+  }
+  if (isOp(k)) {
+    if (justDone) justDone = false;
+    if (!tokens.length) tokens.push("0");
+    if (isOp(last())) tokens[tokens.length - 1] = k;
+    else { if (last().slice(-1) === ".") tokens[tokens.length - 1] = last().slice(0, -1); tokens.push(k); }
+    lastExpr = "";
+    return render();
+  }
+  if (k === "%") {
+    if (tokens.length && !isOp(last())) tokens[tokens.length - 1] = numToStr(parseFloat((parseFloat(last()) / 100).toPrecision(12)));
+    return render();
+  }
+  if (k === "back") {
+    if (justDone) { lastExpr = ""; justDone = false; return render(); }
+    if (!tokens.length) return render();
+    if (isOp(last())) tokens.pop();
+    else { var t = last().slice(0, -1); if (t === "" || t === "-") tokens.pop(); else tokens[tokens.length - 1] = t; }
+    return render();
+  }
+  if (k === "=") {
+    if (!tokens.length) return;
+    var list = tokens.slice();
+    if (isOp(list[list.length - 1])) list.pop();
+    var ans = calculate(list);
+    lastExpr = list.map(function (t) { return isOp(t) ? t : fmt(t); }).join(" ") + " =";
+    if (ans === null) { tokens = []; justDone = true; render("Can't ÷ 0"); return; }
+    tokens = [numToStr(ans)]; justDone = true;
+    return render();
+  }
+}
+
+function render(message) {
+  var expr = $("expr"), res = $("result");
+  if (justDone) expr.textContent = lastExpr || " ";
+  else {
+    // show everything before the number you're typing
+    var shown = tokens.length && !isOp(last()) ? tokens.slice(0, -1) : tokens;
+    expr.textContent = shown.length ? shown.map(function (t) { return isOp(t) ? t : fmt(t); }).join(" ") : " ";
+  }
+  var cur = tokens.length && !isOp(last()) ? last() : (tokens.length ? tokens[tokens.length - 2] : "0");
+  res.textContent = message || fmt(cur);
+  fitResult();
+}
+
+/* Shrink the answer if it's too long to fit */
+function fitResult() {
+  var res = $("result"), box = $("display");
+  res.style.fontSize = "";
+  var size = parseFloat(getComputedStyle(res).fontSize), room = box.clientWidth - 56;
+  while (res.scrollWidth > room && size > 12) { size -= 1; res.style.fontSize = size + "px"; }
+}
+window.addEventListener("resize", fitResult);
+
+var $ = function (id) { return document.getElementById(id); };
+document.querySelectorAll(".key").forEach(function (b) {
+  b.addEventListener("click", function () { press(b.dataset.k); });
+});
+
+/* Click the display to copy the answer */
+$("display").appendChild($("gear"));   /* tuck the gear into the display corner */
+var note = document.createElement("span"); note.className = "copied"; note.textContent = "Copied"; $("display").appendChild(note);
+$("display").addEventListener("click", function (e) {
+  if (e.target.closest(".gear")) return;
+  var val = $("result").textContent.replace(/,/g, "");
+  if (!/^-?[0-9.e+]+$/.test(val)) return;
+  try { navigator.clipboard.writeText(val).then(function () { note.classList.add("show"); setTimeout(function () { note.classList.remove("show"); }, 1200); }); } catch (e) {}
+});
+
+/* Keyboard: numbers, + - * / x, Enter or =, Backspace, Esc to clear, % */
+var KEYMAP = { "+": "+", "-": "−", "*": "×", "x": "×", "X": "×", "/": "÷", "Enter": "=", "=": "=", "Backspace": "back", "Escape": "AC", "Delete": "AC", "%": "%", ".": ".", ",": "." };
+document.addEventListener("keydown", function (e) {
+  if (!panel.hidden || e.target.tagName === "INPUT") return;
+  var k = /^[0-9]$/.test(e.key) ? e.key : KEYMAP[e.key];
+  if (!k) return;
+  e.preventDefault();
+  press(k);
+  var btn = document.querySelector('.key[data-k="' + k + '"]');   // show the key pressing down
+  if (btn) { btn.classList.add("pressed"); setTimeout(function () { btn.classList.remove("pressed"); }, 120); }
+});
+
+render();
+</script>
+</body>
+</html>
