@@ -142,6 +142,11 @@
   .btn { font-size: 14px; padding: 7px 12px; }
   .btn .icon { display: none; }
   @media (max-width: 380px) {
+    .controls { gap: 6px; }
+    .presets, .buttons { gap: 3px; }
+    .chip { padding: 5px 7px; }
+    .btn { padding: 6px 10px; }
+    .btn.main { min-width: 56px; }
     .btn .word { display: none; }
     .btn .icon { display: inline; font-size: 15px; }
     .btn#resetBtn { padding: 5px 9px; }
@@ -166,7 +171,7 @@
      The panel always uses its own fixed colors so it stays readable
      no matter what colors someone picks for the widget. */
   .gear {
-    position: fixed; top: 6px; right: 6px; z-index: 5;
+    position: fixed; top: 6px; left: 6px; z-index: 5;  /* left side: Notion's embed menu covers the top-right */
     width: 28px; height: 28px; display: grid; place-items: center;
     background: none; border: 0; border-radius: 50%; cursor: pointer;
     color: var(--text); opacity: .35;
@@ -233,8 +238,8 @@
   .saved { font-size: 12px; color: #6B6F62; text-align: center; margin-top: 8px; }
   /* gear sits in the corner on stacked layouts, centered on the right in the slim bar */
   @media (min-width: 820px) {
-    body { padding-right: 44px; }
-    .gear { top: 50%; right: 8px; transform: translateY(-50%); }
+    body { padding-left: 44px; }
+    .gear { top: 50%; left: 8px; transform: translateY(-50%); }
     .gear:hover, .gear:focus-visible { transform: translateY(-50%) rotate(40deg); }
   }
 </style>
