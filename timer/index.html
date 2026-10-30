@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- COLORS (change with ?bg=HEX&text=HEX in the link) ---------- */
+  :root {
+    --bg: #3D452F;
+    --text: #FFFAF8;
+    --soft: rgba(255, 250, 248, 0.78);
+    --line: rgba(255, 250, 248, 0.18);
+    --hover: rgba(255, 250, 248, 0.10);
+    --digits: "DM Sans", system-ui, sans-serif;
+    --weight: 500;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: "DM Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 10px 14px;
+    overflow: hidden;
+    transition: background-color .25s;
+  }
+
+  /* ---------- LAYOUT ----------
+     Narrow embeds: three stacked rows (tabs / time / controls).
+     Wide embeds (820px+): one slim row.
+     Every tab uses the same rows, so switching tabs never changes the height. */
+  .bar {
+    height: 100%;
+    display: grid;
+    grid-template-areas: "tabs" "time" "controls";
+    grid-template-rows: auto 1fr auto;
+    align-items: center;
+    justify-items: center;
+    gap: 6px;
+  }
+  @media (min-width: 820px) {
+    .bar {
+      grid-template-areas: "tabs time controls";
+      grid-template-columns: auto minmax(0,1fr) auto;
+      grid-template-rows: 1fr;
+      gap: 22px;
+    }
+  }
+
+  /* ---------- TABS ---------- */
+  .tabs {
+    grid-area: tabs;
+    display: flex;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+  .tab {
+    font: 500 13px/1 "DM Sans", sans-serif;
+    letter-spacing: .04em;
+    color: var(--soft);
+    background: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background-color .15s, color .15s;
+  }
+  .tab:hover { color: var(--text); background: var(--hover); }
+  .tab.on { background: var(--text); color: var(--bg); }
+
+  /* ---------- TIME ---------- */
+  .time {
+    grid-area: time;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    font-family: var(--digits);
+    font-weight: var(--weight);
+    font-variant-numeric: tabular-nums;
+    /* Scales with the embed: whichever is smaller, width or height, sets the size */
+    font-size: clamp(26px, min(13vw, 28vh), 76px);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+  @media (min-width: 820px) {
+    .time { font-size: clamp(26px, min(5vw, 62vh), 72px); }
+  }
+  .time input {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    width: 1.4em;           /* room for two wide digits in any font */
+    text-align: center;
+    padding: 0;
+    margin: 0 -0.04em;
+    outline: none;
+    transition: background-color .15s;
+  }
+  .time input:not([readonly]):hover,
+  .time input:focus { background: var(--hover); }
+  .time input[readonly] { cursor: default; }
+  .colon { opacity: .45; }
+  .small {
+    font-size: .38em;
+    color: var(--soft);
+    margin-left: .12em;
+    letter-spacing: 0;
+  }
+  .flash .time { animation: blink .5s steps(1) infinite; }
+  .flash { animation: pulse 1s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  @keyframes pulse { 50% { background-color: var(--line); } }
+
+  /* ---------- CONTROLS ---------- */
+  .controls {
+    grid-area: controls;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .presets, .buttons { display: flex; gap: 4px; }
+  .chip, .btn {
+    font: 500 13px/1 "DM Sans", sans-serif;
+    color: var(--text);
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 8px;
+    cursor: pointer;
+    transition: transform .15s, background-color .15s, border-color .15s;
+  }
+  .btn { font-size: 14px; padding: 7px 12px; }
+  .btn .icon { display: none; }
+  @media (max-width: 380px) {
+    .btn .word { display: none; }
+    .btn .icon { display: inline; font-size: 15px; }
+    .btn#resetBtn { padding: 5px 9px; }
+  }
+  .chip:hover, .btn:hover {
+    transform: translateY(-1px);
+    background: var(--hover);
+    border-color: var(--soft);
+  }
+  .chip:active, .btn:active { transform: translateY(0) scale(.97); }
+  .btn.main { background: var(--text); color: var(--bg); border-color: var(--text); min-width: 62px; }
+  .btn.main:hover { opacity: .88; background: var(--text); }
+  .note {
+    font-size: 13px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--soft);
+    white-space: nowrap;
+  }
+  [hidden] { display: none !important; }
+  /* ---------- SETTINGS (gear + panel) ----------
+     The panel always uses its own fixed colors so it stays readable
+     no matter what colors someone picks for the widget. */
+  .gear {
+    position: fixed; top: 6px; right: 6px; z-index: 5;
+    width: 28px; height: 28px; display: grid; place-items: center;
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    color: var(--text); opacity: .35;
+    transition: opacity .15s, transform .3s, background-color .15s;
+  }
+  .gear:hover, .gear:focus-visible { opacity: 1; transform: rotate(40deg); background: var(--line); }
+  .gear svg { width: 16px; height: 16px; }
+  .panel {
+    position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+    background: #FFFAF8; color: #2B2F22;
+    font: 13px/1.4 "DM Sans", system-ui, sans-serif; letter-spacing: 0;
+    padding: 12px 16px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .panel-in { max-width: 420px; margin: 0 auto; }
+  .ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ph span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6B6F62; }
+  .x { background: none; border: 0; font-size: 20px; line-height: 1; color: #2B2F22; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; }
+  .x:hover { background: rgba(43,47,34,.08); }
+  .sec { padding: 10px 0; border-top: 1px solid rgba(43,47,34,.12); }
+  .sl { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #6B6F62; margin-bottom: 8px; }
+  .seg { display: flex; gap: 3px; padding: 3px; background: rgba(43,47,34,.07); border-radius: 999px; margin-bottom: 8px; }
+  .seg button {
+    flex: 1; font: 500 13px/1 "DM Sans", sans-serif; color: #4A4E40; background: none;
+    border: 0; border-radius: 999px; padding: 7px 8px; cursor: pointer; transition: background-color .15s;
+  }
+  .seg button:hover { background: rgba(43,47,34,.08); }
+  .seg button.on { background: #3D452F; color: #FFFAF8; }
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+  .pick { display: flex; align-items: center; gap: 6px; }
+  .pick input[type=color] {
+    width: 30px; height: 30px; padding: 0; border: 1px solid rgba(43,47,34,.2);
+    border-radius: 50%; overflow: hidden; cursor: pointer; background: none;
+  }
+  .pick input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .pick input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .pick input[type=color]::-moz-color-swatch { border: 0; border-radius: 50%; }
+  .hexin {
+    width: 82px; font: 12px "DM Mono", ui-monospace, monospace; text-transform: uppercase;
+    color: #2B2F22; background: #fff; border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px;
+  }
+  .contrast { font-size: 13px; padding: 7px 10px; border-radius: 8px; margin-top: 4px; }
+  .contrast.good { background: #E7EEDD; color: #2F4A1C; }
+  .contrast.bad { background: #FBE6DA; color: #7A2E0E; }
+  .tog { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; cursor: pointer; }
+  .tog input { position: absolute; opacity: 0; pointer-events: none; }
+  .tog i {
+    width: 34px; height: 20px; border-radius: 999px; background: rgba(43,47,34,.2);
+    position: relative; transition: background-color .15s; flex: none;
+  }
+  .tog i::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .tog input:checked + i { background: #3D452F; }
+  .tog input:checked + i::after { transform: translateX(14px); }
+  .tog input:focus-visible + i { outline: 2px solid #3D452F; outline-offset: 2px; }
+  .resetall {
+    margin-top: 10px; width: 100%; font: 500 13px/1 "DM Sans", sans-serif; color: #4A4E40;
+    background: none; border: 1px solid rgba(43,47,34,.2); border-radius: 999px; padding: 8px; cursor: pointer;
+    transition: background-color .15s;
+  }
+  .resetall:hover { background: rgba(43,47,34,.06); }
+  .saved { font-size: 12px; color: #6B6F62; text-align: center; margin-top: 8px; }
+  /* gear sits in the corner on stacked layouts, centered on the right in the slim bar */
+  @media (min-width: 820px) {
+    body { padding-right: 44px; }
+    .gear { top: 50%; right: 8px; transform: translateY(-50%); }
+    .gear:hover, .gear:focus-visible { transform: translateY(-50%) rotate(40deg); }
+  }
+</style>
+</head>
+<body>
+<button class="gear" id="gear" aria-label="Settings" title="Settings">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+<div class="panel" id="panel" hidden>
+ <div class="panel-in">
+  <div class="ph"><span>Settings</span><button class="x" id="closePanel" aria-label="Close settings">×</button></div>
+  <div class="sec">
+    <p class="sl">Colors</p>
+    <div class="seg" id="themeSeg">
+      <button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="custom">Custom</button>
+    </div>
+    <div id="customBox" hidden>
+      <div class="crow"><span>Background</span><span class="pick"><input type="color" id="cBg" aria-label="Background color"><input class="hexin" id="hBg" maxlength="7" aria-label="Background hex code"></span></div>
+      <div class="crow"><span>Text</span><span class="pick"><input type="color" id="cText" aria-label="Text color"><input class="hexin" id="hText" maxlength="7" aria-label="Text hex code"></span></div>
+      <p class="contrast" id="contrast"></p>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="sl">Digits</p>
+    <div class="seg" id="fontSeg"><button data-v="sans">Sans</button><button data-v="mono">Mono</button></div>
+    <div class="seg" id="weightSeg"><button data-v="regular">Regular</button><button data-v="bold">Bold</button></div>
+  </div>
+  <div class="sec">
+    <p class="sl">Extras</p>
+    <label class="tog"><span>Clock tab</span><input type="checkbox" id="optClock"><i></i></label>
+    <label class="tog"><span>Lap button (stopwatch)</span><input type="checkbox" id="optLap"><i></i></label>
+    <label class="tog"><span>Chime when timer ends</span><input type="checkbox" id="optSound"><i></i></label>
+  </div>
+  <button class="resetall" id="resetAll">Reset to default</button>
+  <p class="saved">Saves automatically on this device. Colors apply to all your Clock In widgets.</p>
+ </div>
+</div>
+<div class="bar">
+
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-mode="timer">Timer</button>
+    <button class="tab" data-mode="stopwatch">Stopwatch</button>
+    <button class="tab" data-mode="clock" hidden>Clock</button>
+  </nav>
+
+  <!-- TIMER -->
+  <div class="time" id="timerTime">
+    <input id="hh" inputmode="numeric" maxlength="2" value="00" aria-label="hours">
+    <span class="colon">:</span>
+    <input id="mm" inputmode="numeric" maxlength="2" value="25" aria-label="minutes">
+    <span class="colon">:</span>
+    <input id="ss" inputmode="numeric" maxlength="2" value="00" aria-label="seconds">
+  </div>
+
+  <!-- STOPWATCH -->
+  <div class="time" id="swTime" hidden><span id="swMain">00:00</span><span class="small" id="swSmall">.00</span></div>
+
+  <!-- CLOCK -->
+  <div class="time" id="clockTime" hidden><span id="clockMain">12:00</span><span class="small" id="clockSmall">AM</span></div>
+
+  <div class="controls">
+    <div class="presets" id="timerExtra">
+      <button class="chip" data-min="5">5m</button>
+      <button class="chip" data-min="10">10m</button>
+      <button class="chip" data-min="25">25m</button>
+      <button class="chip" data-min="45">45m</button>
+    </div>
+    <span class="note" id="swExtra" hidden></span>
+    <span class="note" id="clockExtra" hidden></span>
+    <div class="buttons" id="buttons">
+      <button class="btn" id="lapBtn" hidden>Lap</button>
+      <button class="btn" id="resetBtn" title="Reset (R)"><span class="word">Reset</span><span class="icon">↺</span></button>
+      <button class="btn main" id="mainBtn">Start</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var mode;
+var SOFT = 0.78, LINE = 0.18;
+/* =========================================================
+   SETTINGS: shared colors + panel
+   Saved in this browser (localStorage). Colors are shared by
+   every Clock In widget on the same device.
+   ========================================================= */
+var THEMES = { dark: { bg: "#3D452F", text: "#FFFAF8" }, light: { bg: "#FFFAF8", text: "#3D452F" } };
+var COLOR_DEFAULT = { theme: "dark", bg: "#3D452F", text: "#FFFAF8" };
+function loadSet(key, def) {
+  try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || "{}")); }
+  catch (e) { return Object.assign({}, def); }
+}
+function saveSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+var colors = loadSet("clockin-colors", COLOR_DEFAULT);
+
+/* --- color math --- */
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function lum(rgb) {
+  var c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function mix(a, b, t) { return a.map(function (v, i) { return Math.round(v * t + b[i] * (1 - t)); }); }
+
+function currentColors() { return colors.theme === "custom" ? colors : THEMES[colors.theme] || THEMES.dark; }
+function applyColors() {
+  var c = currentColors(), rgb = rgbOf(c.text).join(","), r = document.documentElement.style;
+  r.setProperty("--bg", c.bg);
+  r.setProperty("--text", c.text);
+  r.setProperty("--soft", "rgba(" + rgb + "," + SOFT + ")");
+  r.setProperty("--line", "rgba(" + rgb + "," + LINE + ")");
+  r.setProperty("--hover", "rgba(" + rgb + ",0.10)");
+}
+/* Main text needs 4.5:1, the softer label text needs 3:1 (WCAG guidelines) */
+function checkContrast() {
+  var c = currentColors(), bg = rgbOf(c.bg), tx = rgbOf(c.text);
+  var ok = ratio(tx, bg) >= 4.5 && ratio(mix(tx, bg, SOFT), bg) >= 3;
+  var el = document.getElementById("contrast");
+  el.className = "contrast " + (ok ? "good" : "bad");
+  el.textContent = ok ? "✓ Easy to read" : "Hard to read. Try more difference between light and dark.";
+}
+
+/* --- panel wiring --- */
+var panel = document.getElementById("panel");
+document.getElementById("gear").onclick = function () { panel.hidden = false; syncPanel(); };
+document.getElementById("closePanel").onclick = function () { panel.hidden = true; };
+document.addEventListener("keydown", function (e) { if (e.key === "Escape") panel.hidden = true; });
+
+function segSelect(id, val) {
+  document.querySelectorAll("#" + id + " button").forEach(function (b) { b.classList.toggle("on", b.dataset.v === val); });
+}
+function syncPanel() {
+  var c = currentColors();
+  segSelect("themeSeg", colors.theme);
+  document.getElementById("customBox").hidden = colors.theme !== "custom";
+  document.getElementById("cBg").value = c.bg; document.getElementById("hBg").value = c.bg.toUpperCase();
+  document.getElementById("cText").value = c.text; document.getElementById("hText").value = c.text.toUpperCase();
+  checkContrast();
+  if (window.syncExtra) syncExtra();
+}
+document.querySelectorAll("#themeSeg button").forEach(function (b) {
+  b.onclick = function () {
+    if (b.dataset.v === "custom" && colors.theme !== "custom") {
+      var c = currentColors(); colors.bg = c.bg; colors.text = c.text;   // start custom from what's showing
+    }
+    colors.theme = b.dataset.v; saveSet("clockin-colors", colors); applyColors(); syncPanel();
+  };
+});
+function setColor(which, val) {
+  val = val.trim(); if (val[0] !== "#") val = "#" + val;
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  colors[which] = val.toLowerCase(); saveSet("clockin-colors", colors); applyColors(); syncPanel();
+}
+document.getElementById("cBg").oninput = function () { setColor("bg", this.value); };
+document.getElementById("cText").oninput = function () { setColor("text", this.value); };
+document.getElementById("hBg").onchange = function () { setColor("bg", this.value); };
+document.getElementById("hText").onchange = function () { setColor("text", this.value); };
+document.getElementById("resetAll").onclick = function () {
+  colors = Object.assign({}, COLOR_DEFAULT); saveSet("clockin-colors", colors); applyColors();
+  if (window.resetExtra) resetExtra();
+  syncPanel();
+};
+/* If colors change in another widget on the same page, match them */
+window.addEventListener("storage", function (e) {
+  if (e.key === "clockin-colors") { colors = loadSet("clockin-colors", COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
+});
+applyColors();
+
+/* =========================================================
+   TIMER SETTINGS (font, weight, extras) - saved on this device
+   ========================================================= */
+var TIMER_DEFAULT = { font: "sans", weight: "regular", clock: false, lap: false, sound: true };
+var opts = loadSet("clockin-timer", TIMER_DEFAULT);
+var showClock, showLap, soundOn;
+function applyTimerOpts() {
+  var r = document.documentElement.style, mono = opts.font === "mono";
+  r.setProperty("--digits", mono ? '"DM Mono", ui-monospace, monospace' : '"DM Sans", system-ui, sans-serif');
+  r.setProperty("--weight", opts.weight === "bold" ? (mono ? "500" : "700") : (mono ? "400" : "500"));
+  showClock = opts.clock; showLap = opts.lap; soundOn = opts.sound;
+  document.querySelector('[data-mode="clock"]').hidden = !showClock;
+  if (typeof mode !== "undefined") { if (mode === "clock" && !showClock) setMode("timer"); else setMode(mode); }
+}
+function saveTimerOpts() { saveSet("clockin-timer", opts); applyTimerOpts(); syncExtra(); }
+function syncExtra() {
+  segSelect("fontSeg", opts.font); segSelect("weightSeg", opts.weight);
+  document.getElementById("optClock").checked = opts.clock;
+  document.getElementById("optLap").checked = opts.lap;
+  document.getElementById("optSound").checked = opts.sound;
+}
+function resetExtra() { opts = Object.assign({}, TIMER_DEFAULT); saveTimerOpts(); }
+document.querySelectorAll("#fontSeg button").forEach(function (b) { b.onclick = function () { opts.font = b.dataset.v; saveTimerOpts(); }; });
+document.querySelectorAll("#weightSeg button").forEach(function (b) { b.onclick = function () { opts.weight = b.dataset.v; saveTimerOpts(); }; });
+document.getElementById("optClock").onchange = function () { opts.clock = this.checked; saveTimerOpts(); };
+document.getElementById("optLap").onchange = function () { opts.lap = this.checked; saveTimerOpts(); };
+document.getElementById("optSound").onchange = function () { opts.sound = this.checked; saveTimerOpts(); };
+applyTimerOpts();
+
+/* ---------- helpers ---------- */
+var $ = function (id) { return document.getElementById(id); };
+function pad(x) { return String(x).padStart(2, "0"); }
+
+/* ---------- TABS ---------- */
+document.querySelectorAll(".tab").forEach(function (t) {
+  t.onclick = function () { setMode(t.dataset.mode); };
+});
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("on", t.dataset.mode === m); });
+  $("timerTime").hidden = $("timerExtra").hidden = m !== "timer";
+  $("swTime").hidden = $("swExtra").hidden = m !== "stopwatch";
+  $("clockTime").hidden = $("clockExtra").hidden = m !== "clock";
+  $("buttons").hidden = m === "clock";
+  $("lapBtn").hidden = !(m === "stopwatch" && showLap);
+  updateButtons();
+}
+
+/* =========================================================
+   TIMER
+   Counts down to a fixed end time, so it stays accurate
+   even if the tab is in the background.
+   ========================================================= */
+var tState = "idle";           // idle | running | paused
+var tSet = 25 * 60;            // the duration you picked, in seconds
+var tLeft = tSet;              // seconds left when paused
+var tEnd = 0;                  // timestamp when a running timer hits zero
+
+function readInputs() {
+  var h = Math.min(99, +$("hh").value || 0);
+  var m = Math.min(59, +$("mm").value || 0);
+  var s = Math.min(59, +$("ss").value || 0);
+  return h * 3600 + m * 60 + s;
+}
+function showTimer(sec) {
+  sec = Math.max(0, Math.ceil(sec));
+  $("hh").value = pad(Math.floor(sec / 3600));
+  $("mm").value = pad(Math.floor(sec % 3600 / 60));
+  $("ss").value = pad(sec % 60);
+}
+function setEditable(on) {
+  ["hh", "mm", "ss"].forEach(function (id) { $(id).readOnly = !on; });
+}
+["hh", "mm", "ss"].forEach(function (id) {
+  var el = $(id);
+  el.addEventListener("focus", function () { if (!el.readOnly) el.select(); });
+  el.addEventListener("input", function () { el.value = el.value.replace(/\D/g, "").slice(-2); });
+  el.addEventListener("blur", function () { tSet = tLeft = readInputs(); showTimer(tSet); });
+  el.addEventListener("keydown", function (e) { if (e.key === "Enter") { el.blur(); mainAction(); } });
+});
+
+document.querySelectorAll(".chip").forEach(function (c) {
+  c.onclick = function () {
+    stopFlash();
+    tState = "idle"; setEditable(true);
+    tSet = tLeft = c.dataset.min * 60;
+    showTimer(tSet); updateButtons();
+  };
+});
+
+function tickTimer() {
+  if (tState !== "running") return;
+  var left = (tEnd - Date.now()) / 1000;
+  if (left <= 0) { finish(); return; }
+  showTimer(left);
+}
+function finish() {
+  tState = "idle"; setEditable(true);
+  tLeft = tSet; showTimer(0);
+  updateButtons();
+  startFlash();
+  if (soundOn) chime();
+}
+
+/* ---------- done: flash + chime ---------- */
+var flashTimer;
+function startFlash() {
+  document.body.classList.add("flash");
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(stopFlash, 15000);   // stops on its own after 15 seconds
+}
+function stopFlash() {
+  if (!document.body.classList.contains("flash")) return;
+  document.body.classList.remove("flash");
+  clearTimeout(flashTimer);
+  if (tState === "idle" && mode === "timer") showTimer(tSet);
+}
+document.addEventListener("pointerdown", stopFlash);
+
+var audio;
+function chime() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    // three soft rising notes, played twice
+    [0, 1.4].forEach(function (offset) {
+      [523.25, 659.25, 783.99].forEach(function (freq, i) {
+        var t = audio.currentTime + offset + i * 0.18;
+        var o = audio.createOscillator(), g = audio.createGain();
+        o.type = "sine"; o.frequency.value = freq;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.22, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 1.1);
+        o.connect(g).connect(audio.destination);
+        o.start(t); o.stop(t + 1.2);
+      });
+    });
+  } catch (e) {}
+}
+
+/* =========================================================
+   STOPWATCH
+   ========================================================= */
+var sState = "idle";  // idle | running | paused
+var sStart = 0;       // timestamp the current run started
+var sBank = 0;        // ms counted before the last pause
+var laps = [];
+
+function swElapsed() { return sBank + (sState === "running" ? Date.now() - sStart : 0); }
+function showStopwatch() {
+  var ms = swElapsed();
+  var h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000);
+  $("swMain").textContent = (h ? h + ":" : "") + pad(m) + ":" + pad(s);
+  $("swSmall").textContent = "." + pad(Math.floor(ms % 1000 / 10));
+}
+function fmtLap(ms) {
+  var m = Math.floor(ms / 60000), s = Math.floor(ms % 60000 / 1000);
+  return pad(m) + ":" + pad(s) + "." + pad(Math.floor(ms % 1000 / 10));
+}
+$("lapBtn").onclick = function () {
+  if (sState !== "running") return;
+  var total = swElapsed(), prev = laps.length ? laps[laps.length - 1] : 0;
+  laps.push(total);
+  $("swExtra").textContent = "Lap " + laps.length + " · " + fmtLap(total - prev);
+};
+
+/* =========================================================
+   CLOCK (only if ?clock=1)
+   ========================================================= */
+function showClockNow() {
+  var d = new Date(), h = d.getHours();
+  $("clockMain").textContent = (h % 12 || 12) + ":" + pad(d.getMinutes());
+  $("clockSmall").textContent = (h < 12 ? "AM" : "PM");
+  $("clockExtra").textContent = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+function mainAction() {
+  stopFlash();
+  if (mode === "timer") {
+    if (tState === "running") {                 // pause
+      tLeft = (tEnd - Date.now()) / 1000; tState = "paused";
+    } else {                                    // start or resume
+      if (tState === "idle") { tSet = tLeft = readInputs(); }
+      if (tLeft <= 0) return;
+      tEnd = Date.now() + tLeft * 1000; tState = "running"; setEditable(false);
+      if (soundOn && !audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    }
+  } else if (mode === "stopwatch") {
+    if (sState === "running") { sBank = swElapsed(); sState = "paused"; }
+    else { sStart = Date.now(); sState = "running"; }
+  }
+  updateButtons();
+}
+function resetAction() {
+  stopFlash();
+  if (mode === "timer") {
+    tState = "idle"; tLeft = tSet; setEditable(true); showTimer(tSet);
+  } else if (mode === "stopwatch") {
+    sState = "idle"; sBank = 0; laps = []; $("swExtra").textContent = ""; showStopwatch();
+  }
+  updateButtons();
+}
+function updateButtons() {
+  var st = mode === "timer" ? tState : sState;
+  $("mainBtn").textContent = st === "running" ? "Pause" : st === "paused" ? "Resume" : "Start";
+}
+$("mainBtn").onclick = mainAction;
+$("resetBtn").onclick = resetAction;
+
+/* Keyboard: Space = start/pause, R = reset, L = lap */
+document.addEventListener("keydown", function (e) {
+  if (e.target.tagName === "INPUT" || !panel.hidden) return;
+  if (e.code === "Space") { e.preventDefault(); mainAction(); }
+  else if (e.key === "r" || e.key === "R") resetAction();
+  else if ((e.key === "l" || e.key === "L") && showLap && mode === "stopwatch") $("lapBtn").click();
+});
+
+/* ---------- one loop updates whatever is showing ---------- */
+setInterval(function () {
+  tickTimer();
+  if (sState === "running" && mode === "stopwatch") showStopwatch();
+  if (mode === "clock") showClockNow();
+}, 50);
+
+showTimer(tSet);
+showStopwatch();
+showClockNow();
+setMode("timer");
+</script>
+</body>
+</html>
