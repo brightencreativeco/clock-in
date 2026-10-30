@@ -186,7 +186,8 @@
     -webkit-font-smoothing: antialiased;
   }
   .panel-in { max-width: 420px; margin: 0 auto; }
-  .ph { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .ph { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 6px; margin-bottom: 6px; }  /* X on the left: Notion's menu covers the top-right */
+  .ph .x { margin-left: -6px; }
   .ph span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6B6F62; }
   .x { background: none; border: 0; font-size: 20px; line-height: 1; color: #2B2F22; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; }
   .x:hover { background: rgba(43,47,34,.08); }
