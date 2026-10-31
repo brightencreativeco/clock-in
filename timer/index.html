@@ -634,21 +634,24 @@ setInterval(function () {
   if (mode === "clock") showClockNow();
 }, 50);
 
-/* Size each digit box to exactly fit two digits in the current font,
-   so the colons sit evenly no matter which font or size is showing */
-var measure = document.createElement("canvas").getContext("2d");
-function fitDigits() {
-  var el = document.getElementById("hh"), cs = getComputedStyle(el);
-  measure.font = cs.fontWeight + " " + cs.fontSize + " " + cs.fontFamily;
-  var w = 0;
-  ["00", "44", "88", "11"].forEach(function (d) { w = Math.max(w, measure.measureText(d).width); });
-  var ls = parseFloat(cs.letterSpacing) || 0;
-  ["hh", "mm", "ss"].forEach(function (id) { document.getElementById(id).style.width = Math.ceil(w + ls * 2 + 4) + "px"; });
+/* Size each digit box to fit its own digits, measured the way they actually
+   render (some fonts make "25" narrower than "00"), so the colons sit evenly */
+var ruler = document.createElement("span");
+ruler.setAttribute("aria-hidden", "true");
+ruler.style.cssText = "position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0";
+document.getElementById("timerTime").appendChild(ruler);
+function fitBox(el) {
+  ruler.textContent = el.value || "00";
+  el.style.width = Math.ceil(ruler.getBoundingClientRect().width + 2) + "px";
 }
+function fitDigits() { ["hh", "mm", "ss"].forEach(function (id) { fitBox(document.getElementById(id)); }); }
 window.addEventListener("resize", fitDigits);
 if (document.fonts) document.fonts.ready.then(fitDigits);
 var _applyTimerOpts = applyTimerOpts;
 applyTimerOpts = function () { _applyTimerOpts(); fitDigits(); };
+var _showTimer = showTimer;
+showTimer = function (sec) { _showTimer(sec); fitDigits(); };
+["hh", "mm", "ss"].forEach(function (id) { document.getElementById(id).addEventListener("input", function () { fitBox(this); }); });
 fitDigits();
 
 showTimer(tSet);
