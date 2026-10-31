@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World Clock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- COLORS (set with the gear; these are the defaults) ---------- */
+  :root {
+    --bg: #3D452F;
+    --text: #FFFAF8;
+    --soft: rgba(255, 250, 248, 0.78);
+    --line: rgba(255, 250, 248, 0.18);
+    --hover: rgba(255, 250, 248, 0.10);
+    --work: #8CCB7E;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: "DM Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  /* ---------- LAYOUT ----------
+     Default: home time on top, city tiles below, slider at the bottom.
+     Wide + short embeds: home on the left, tiles on the right. */
+  .wrap {
+    height: 100%;
+    display: grid;
+    grid-template-areas: "home" "tiles" "slider";
+    grid-template-rows: minmax(0, 1.1fr) minmax(0, 2fr) auto;
+    gap: 8px;
+  }
+  @media (min-width: 640px) and (min-aspect-ratio: 9/4) {
+    .wrap {
+      grid-template-areas: "home tiles" "slider slider";
+      grid-template-columns: minmax(180px, 1fr) 2fr;
+      grid-template-rows: minmax(0, 1fr) auto;
+    }
+  }
+  .no-slider .wrap { grid-template-rows: minmax(0, 1.1fr) minmax(0, 2fr); }
+  @media (min-width: 640px) and (min-aspect-ratio: 9/4) { .no-slider .wrap { grid-template-rows: minmax(0, 1fr); } }
+
+  /* ---------- HOME ---------- */
+  .home {
+    grid-area: home;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 8px 12px; min-height: 0; text-align: center;
+  }
+  .home-city { font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--soft); }
+  .home-time {
+    font-weight: 500; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums;
+    font-size: clamp(26px, min(11vw, 13vh), 64px);
+  }
+  .home-date { font-size: 14px; color: var(--soft); }
+  .ampm { font-size: .42em; color: var(--soft); margin-left: .15em; letter-spacing: 0; }
+
+  /* ---------- CITY TILES ---------- */
+  .tiles {
+    grid-area: tiles;
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+  }
+  .tile {
+    position: relative;
+    background: var(--hover);
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: flex; flex-direction: column; justify-content: center;
+    min-height: 0; min-width: 0; overflow: hidden;
+    transition: transform .15s, background-color .15s;
+  }
+  .tile:hover { transform: translateY(-1px); background: var(--line); }
+  .tile-city {
+    font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--soft);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px;
+  }
+  .tile-time {
+    font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap;
+    font-size: clamp(17px, min(5.5vw, 6.5vh), 30px);
+  }
+  .tile-note { font-size: 13px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot {
+    position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--line); transition: background-color .2s;
+  }
+  .dot.on { background: var(--work); box-shadow: 0 0 0 3px rgba(140, 203, 126, .2); }
+  .no-dot .dot { display: none; }
+  .no-dot .tile-city { padding-right: 0; }
+
+  /* ---------- SLIDER ---------- */
+  .slider { grid-area: slider; display: flex; align-items: center; gap: 10px; }
+  .no-slider .slider { display: none; }
+  .now {
+    font: 500 13px/1 "DM Sans", sans-serif; color: var(--text); background: none; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; white-space: nowrap;
+    transition: transform .15s, background-color .15s, opacity .15s;
+  }
+  .now:hover { transform: translateY(-1px); background: var(--hover); }
+  .now:disabled { opacity: .4; transform: none; background: none; cursor: default; }
+  .slide-note { font-size: 13px; color: var(--soft); min-width: 74px; text-align: right; white-space: nowrap; }
+  input[type=range] {
+    flex: 1; min-width: 0; -webkit-appearance: none; appearance: none; background: transparent; height: 24px; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: var(--line); }
+  input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: var(--line); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%;
+    background: var(--text); border: 3px solid var(--bg); box-shadow: 0 0 0 1px var(--soft);
+    transition: transform .15s;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 14px; height: 14px; border-radius: 50%; background: var(--text); border: 3px solid var(--bg); box-shadow: 0 0 0 1px var(--soft);
+  }
+  input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+  input[type=range]:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+
+  /* gear sits in the home box's top-left corner (Notion's menu covers the top-right) */
+  .city-row { display: grid; grid-template-columns: 1fr 1.3fr auto auto; gap: 4px; margin-bottom: 6px; }
+  /* ---------- SETTINGS (gear + panel) ----------
+     The panel always uses its own fixed colors so it stays readable
+     no matter what colors someone picks for the widget. */
+  .gear {
+    position: fixed; top: 6px; right: 6px; z-index: 5;
+    width: 28px; height: 28px; display: grid; place-items: center;
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    color: var(--text); opacity: .35;
+    transition: opacity .15s, transform .3s, background-color .15s;
+  }
+  .gear:hover, .gear:focus-visible { opacity: 1; transform: rotate(40deg); background: var(--line); }
+  .gear svg { width: 16px; height: 16px; }
+  .panel {
+    position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+    background: #FFFAF8; color: #2B2F22;
+    font: 13px/1.4 "DM Sans", system-ui, sans-serif; letter-spacing: 0;
+    padding: 12px 16px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .panel-in { max-width: 420px; margin: 0 auto; }
+  .ph { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 6px; margin-bottom: 6px; }  /* X on the left: Notion's menu covers the top-right */
+  .ph .x { margin-left: -6px; }
+  .ph span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6B6F62; }
+  .x { background: none; border: 0; font-size: 20px; line-height: 1; color: #2B2F22; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; }
+  .x:hover { background: rgba(43,47,34,.08); }
+  .sec { padding: 10px 0; border-top: 1px solid rgba(43,47,34,.12); }
+  .sl { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #6B6F62; margin-bottom: 8px; }
+  .seg { display: flex; gap: 3px; padding: 3px; background: rgba(43,47,34,.07); border-radius: 999px; margin-bottom: 8px; }
+  .seg button {
+    flex: 1; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40; background: none;
+    border: 0; border-radius: 999px; padding: 7px 8px; cursor: pointer; transition: background-color .15s;
+  }
+  .seg button:hover { background: rgba(43,47,34,.08); }
+  .seg button.on { background: #3D452F; color: #FFFAF8; }
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+  .pick { display: flex; align-items: center; gap: 6px; }
+  .pick input[type=color] {
+    width: 30px; height: 30px; padding: 0; border: 1px solid rgba(43,47,34,.2);
+    border-radius: 50%; overflow: hidden; cursor: pointer; background: none;
+  }
+  .pick input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .pick input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .pick input[type=color]::-moz-color-swatch { border: 0; border-radius: 50%; }
+  .hexin {
+    width: 82px; font: 12px "DM Mono", ui-monospace, monospace; text-transform: uppercase;
+    color: #2B2F22; background: #fff; border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px;
+  }
+  .contrast { font-size: 12px; padding: 7px 10px; border-radius: 8px; margin-top: 4px; }
+  .contrast.good { background: #E7EEDD; color: #2F4A1C; }
+  .contrast.bad { background: #FBE6DA; color: #7A2E0E; }
+  .tog { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; cursor: pointer; }
+  .tog input { position: absolute; opacity: 0; pointer-events: none; }
+  .tog i {
+    width: 34px; height: 20px; border-radius: 999px; background: rgba(43,47,34,.2);
+    position: relative; transition: background-color .15s; flex: none;
+  }
+  .tog i::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .tog input:checked + i { background: #3D452F; }
+  .tog input:checked + i::after { transform: translateX(14px); }
+  .tog input:focus-visible + i { outline: 2px solid #3D452F; outline-offset: 2px; }
+  .resetall {
+    margin-top: 10px; width: 100%; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40;
+    background: none; border: 1px solid rgba(43,47,34,.2); border-radius: 999px; padding: 8px; cursor: pointer;
+    transition: background-color .15s;
+  }
+  .resetall:hover { background: rgba(43,47,34,.06); }
+  .saved { font-size: 11px; color: #6B6F62; text-align: center; margin-top: 8px; }
+  .txt {
+    font: 13px "DM Sans", system-ui, sans-serif; color: #2B2F22; background: #fff;
+    border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px; min-width: 0;
+  }
+  .txt:focus { outline: 2px solid #3D452F; outline-offset: 0; }
+  .mini {
+    font: 500 13px/1 "DM Sans", sans-serif; color: #4A4E40; background: none; cursor: pointer;
+    border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px; transition: background-color .15s;
+  }
+  .mini:hover { background: rgba(43,47,34,.07); }
+  .mini:disabled { opacity: .35; cursor: default; }
+  .hint { font-size: 12px; color: #6B6F62; margin-top: 6px; }
+  .gear { top: 14px; left: 14px; }
+</style>
+</head>
+<body>
+<button class="gear" id="gear" aria-label="Settings" title="Settings">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+<div class="panel" id="panel" hidden>
+ <div class="panel-in">
+  <div class="ph"><span>Settings</span><button class="x" id="closePanel" aria-label="Close settings">×</button></div>
+  <div class="sec">
+    <p class="sl">Colors</p>
+    <div class="seg" id="themeSeg">
+      <button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="custom">Custom</button>
+    </div>
+    <div id="customBox" hidden>
+      <div class="crow"><span>Background</span><span class="pick"><input type="color" id="cBg" aria-label="Background color"><input class="hexin" id="hBg" maxlength="7" aria-label="Background hex code"></span></div>
+      <div class="crow"><span>Text</span><span class="pick"><input type="color" id="cText" aria-label="Text color"><input class="hexin" id="hText" maxlength="7" aria-label="Text hex code"></span></div>
+      <p class="contrast" id="contrast"></p>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="sl">Home</p>
+    <div class="crow"><span>Time zone</span><input class="txt" id="homeZone" list="zoneList" placeholder="Auto (this device)"></div>
+    <div class="crow"><span>Name</span><input class="txt" id="homeLabel" placeholder="Auto"></div>
+    <p class="hint">Leave both blank to follow this device's time zone.</p>
+  </div>
+  <div class="sec">
+    <p class="sl">Cities (up to 6)</p>
+    <div id="cityRows"></div>
+    <button class="mini" id="addCity">+ Add a city</button>
+    <p class="hint">Can't find your city? Pick a big city in the same time zone, then rename it (for Albuquerque, pick Denver).</p>
+  </div>
+  <div class="sec">
+    <p class="sl">Display</p>
+    <div class="seg" id="hourSeg"><button data-v="12">12-hour</button><button data-v="24">24-hour</button></div>
+    <label class="tog"><span>Work-hours dot (9–5)</span><input type="checkbox" id="optDot"><i></i></label>
+    <label class="tog"><span>Time slider</span><input type="checkbox" id="optSlider"><i></i></label>
+  </div>
+  <datalist id="zoneList"></datalist>
+  <button class="resetall" id="resetAll">Reset to default</button>
+  <p class="saved">Saves automatically on this device.</p>
+ </div>
+</div>
+<div class="wrap" id="wrap">
+  <section class="home" id="home">
+    <p class="home-city" id="homeCity">Home</p>
+    <p class="home-time" id="homeTime">--:--</p>
+    <p class="home-date" id="homeDate">&nbsp;</p>
+  </section>
+
+  <section class="tiles" id="tiles"></section>
+
+  <div class="slider" id="sliderRow">
+    <button class="now" id="nowBtn" title="Back to the current time">↺ Now</button>
+    <input type="range" id="slide" min="-96" max="96" step="1" value="0" aria-label="Slide to see a different time">
+    <span class="slide-note" id="slideNote">Live</span>
+  </div>
+</div>
+
+<script>
+var SOFT = 0.78, LINE = 0.18, COLOR_KEY = "clockin-colors-world";
+/* =========================================================
+   SETTINGS: colors + panel
+   Saved in this browser (localStorage). Each widget keeps
+   its own colors (COLOR_KEY is set per widget).
+   ========================================================= */
+var THEMES = { dark: { bg: "#3D452F", text: "#FFFAF8" }, light: { bg: "#FFFAF8", text: "#3D452F" } };
+var COLOR_DEFAULT = { theme: "dark", bg: "#3D452F", text: "#FFFAF8" };
+function loadSet(key, def) {
+  try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || "{}")); }
+  catch (e) { return Object.assign({}, def); }
+}
+function saveSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+var colors = loadSet(COLOR_KEY, COLOR_DEFAULT);
+
+/* --- color math --- */
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function lum(rgb) {
+  var c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function mix(a, b, t) { return a.map(function (v, i) { return Math.round(v * t + b[i] * (1 - t)); }); }
+
+function currentColors() { return colors.theme === "custom" ? colors : THEMES[colors.theme] || THEMES.dark; }
+function applyColors() {
+  var c = currentColors(), rgb = rgbOf(c.text).join(","), r = document.documentElement.style;
+  r.setProperty("--bg", c.bg);
+  r.setProperty("--text", c.text);
+  r.setProperty("--soft", "rgba(" + rgb + "," + SOFT + ")");
+  r.setProperty("--line", "rgba(" + rgb + "," + LINE + ")");
+  r.setProperty("--hover", "rgba(" + rgb + ",0.10)");
+}
+/* Main text needs 4.5:1, the softer label text needs 3:1 (WCAG guidelines) */
+function checkContrast() {
+  var c = currentColors(), bg = rgbOf(c.bg), tx = rgbOf(c.text);
+  var ok = ratio(tx, bg) >= 4.5 && ratio(mix(tx, bg, SOFT), bg) >= 3;
+  var el = document.getElementById("contrast");
+  el.className = "contrast " + (ok ? "good" : "bad");
+  el.textContent = ok ? "✓ Easy to read" : "Hard to read. Try more difference between light and dark.";
+}
+
+/* --- panel wiring --- */
+var panel = document.getElementById("panel");
+document.getElementById("gear").onclick = function () { panel.hidden = false; syncPanel(); };
+document.getElementById("closePanel").onclick = function () { panel.hidden = true; };
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) { panel.hidden = true; e.stopImmediatePropagation(); } });
+
+function segSelect(id, val) {
+  document.querySelectorAll("#" + id + " button").forEach(function (b) { b.classList.toggle("on", b.dataset.v === val); });
+}
+function syncPanel() {
+  var c = currentColors();
+  segSelect("themeSeg", colors.theme);
+  document.getElementById("customBox").hidden = colors.theme !== "custom";
+  document.getElementById("cBg").value = c.bg; document.getElementById("hBg").value = c.bg.toUpperCase();
+  document.getElementById("cText").value = c.text; document.getElementById("hText").value = c.text.toUpperCase();
+  checkContrast();
+  if (window.syncExtra) syncExtra();
+}
+document.querySelectorAll("#themeSeg button").forEach(function (b) {
+  b.onclick = function () {
+    if (b.dataset.v === "custom" && colors.theme !== "custom") {
+      var c = currentColors(); colors.bg = c.bg; colors.text = c.text;   // start custom from what's showing
+    }
+    colors.theme = b.dataset.v; saveSet(COLOR_KEY, colors); applyColors(); syncPanel();
+  };
+});
+function setColor(which, val) {
+  val = val.trim(); if (val[0] !== "#") val = "#" + val;
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  colors[which] = val.toLowerCase(); saveSet(COLOR_KEY, colors); applyColors(); syncPanel();
+}
+document.getElementById("cBg").oninput = function () { setColor("bg", this.value); };
+document.getElementById("cText").oninput = function () { setColor("text", this.value); };
+document.getElementById("hBg").onchange = function () { setColor("bg", this.value); };
+document.getElementById("hText").onchange = function () { setColor("text", this.value); };
+document.getElementById("resetAll").onclick = function () {
+  colors = Object.assign({}, COLOR_DEFAULT); saveSet(COLOR_KEY, colors); applyColors();
+  if (window.resetExtra) resetExtra();
+  syncPanel();
+};
+/* If colors change in another widget on the same page, match them */
+window.addEventListener("storage", function (e) {
+  if (e.key === COLOR_KEY) { colors = loadSet(COLOR_KEY, COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
+});
+applyColors();
+
+/* =========================================================
+   WORLD CLOCK SETTINGS - saved on this device
+   ========================================================= */
+var WORLD_DEFAULT = {
+  homeTz: "", homeLabel: "",            // blank = follow this device
+  cities: [
+    { label: "Melbourne", tz: "Australia/Melbourne" },
+    { label: "London", tz: "Europe/London" },
+    { label: "Seattle", tz: "America/Los_Angeles" },
+    { label: "Albuquerque", tz: "America/Denver" },
+    { label: "Austin", tz: "America/Chicago" },
+    { label: "Washington DC", tz: "America/New_York" }
+  ],
+  hours: "12", dot: true, slider: true
+};
+var wopts = loadSet("clockin-world", JSON.parse(JSON.stringify(WORLD_DEFAULT)));
+var $ = function (id) { return document.getElementById(id); };
+
+/* ---------- time zone helpers ---------- */
+var DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+function cityOf(tz) { return tz.split("/").pop().replace(/_/g, " "); }
+function homeTz() { return wopts.homeTz || DEVICE_TZ; }
+function homeLabel() { return wopts.homeLabel || cityOf(homeTz()); }
+
+/* Minutes a zone is ahead of UTC at a given moment (handles daylight saving) */
+function offsetMin(tz, date) {
+  var p = {};
+  new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })
+    .formatToParts(date).forEach(function (x) { p[x.type] = x.value; });
+  var asUTC = Date.UTC(+p.year, p.month - 1, +p.day, +p.hour % 24, +p.minute);
+  return Math.round((asUTC - Math.floor(date.getTime() / 60000) * 60000) / 60000);
+}
+function hourIn(tz, date) {
+  return +new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "numeric" }).format(date) % 24;
+}
+function dayKey(tz, date) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+function timeHTML(tz, date) {
+  if (wopts.hours === "24") {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+  var parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(date);
+  var main = "", ap = "";
+  parts.forEach(function (x) { if (x.type === "dayPeriod") ap = x.value; else if (x.type !== "literal" || x.value.trim()) main += x.value; });
+  return main + '<span class="ampm">' + ap + "</span>";
+}
+function diffText(mins) {
+  if (mins === 0) return "Same time";
+  var sign = mins > 0 ? "+" : "−", m = Math.abs(mins), h = Math.floor(m / 60), r = m % 60;
+  return sign + (h ? h + (r ? "h " + r + "m" : (h === 1 ? " hr" : " hrs")) : r + "m");
+}
+
+/* ---------- build the tiles ---------- */
+function buildTiles() {
+  var box = $("tiles"), n = wopts.cities.length;
+  box.innerHTML = "";
+  wopts.cities.forEach(function (c, i) {
+    var t = document.createElement("div");
+    t.className = "tile";
+    t.innerHTML = '<span class="dot" id="dot' + i + '"></span><p class="tile-city"></p><p class="tile-time" id="time' + i + '"></p><p class="tile-note" id="note' + i + '"></p>';
+    t.querySelector(".tile-city").textContent = c.label || cityOf(c.tz);
+    box.appendChild(t);
+  });
+  layoutTiles();
+}
+/* 1-3 cities: one row. 4: 2x2. 5-6: 3 across (2 across on narrow embeds). */
+function layoutTiles() {
+  var n = wopts.cities.length, narrow = window.innerWidth < 420;
+  var wide = window.innerWidth >= 640 && window.innerWidth / window.innerHeight >= 2.25;
+  var cols = n <= 3 ? n : n === 4 ? 2 : (narrow ? 2 : 3);
+  if (wide) cols = n <= 3 ? n : Math.ceil(n / 2);
+  $("tiles").style.gridTemplateColumns = "repeat(" + Math.max(cols, 1) + ", minmax(0, 1fr))";
+  $("tiles").hidden = n === 0;
+}
+window.addEventListener("resize", layoutTiles);
+
+/* ---------- the slider ---------- */
+var shift = 0;          // minutes away from now (15-minute steps)
+var snapTimer;
+$("slide").addEventListener("input", function () {
+  shift = +this.value * 15;
+  clearTimeout(snapTimer);
+  snapTimer = setTimeout(backToNow, 60000);   // drifts back to live after a minute
+  render();
+});
+function backToNow() { shift = 0; $("slide").value = 0; render(); }
+$("nowBtn").onclick = backToNow;
+
+/* ---------- draw everything ---------- */
+function render() {
+  var at = new Date(Date.now() + shift * 60000), htz = homeTz(), hOff = offsetMin(htz, at), hDay = dayKey(htz, at);
+  $("homeCity").textContent = homeLabel();
+  $("homeTime").innerHTML = timeHTML(htz, at);
+  $("homeDate").textContent = at.toLocaleDateString("en-US", { timeZone: htz, weekday: "long", month: "long", day: "numeric" });
+  wopts.cities.forEach(function (c, i) {
+    if (!$("time" + i)) return;
+    $("time" + i).innerHTML = timeHTML(c.tz, at);
+    var d = dayKey(c.tz, at), note = diffText(offsetMin(c.tz, at) - hOff);
+    if (d > hDay) note = "Tomorrow · " + note; else if (d < hDay) note = "Yesterday · " + note;
+    $("note" + i).textContent = note;
+    var h = hourIn(c.tz, at);
+    $("dot" + i).className = "dot" + (h >= 9 && h < 17 ? " on" : "");
+    $("dot" + i).title = h >= 9 && h < 17 ? "Work hours there" : "Outside work hours there";
+  });
+  var live = shift === 0;
+  $("nowBtn").disabled = live;
+  $("slideNote").textContent = live ? "Live" : diffText(shift) + " from now";
+}
+
+/* =========================================================
+   GEAR PANEL: home, cities, display
+   ========================================================= */
+var ZONES = (Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [
+  "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver", "America/Phoenix", "America/Chicago",
+  "America/New_York", "America/Toronto", "America/Sao_Paulo", "Europe/London", "Europe/Paris", "Europe/Berlin",
+  "Africa/Johannesburg", "Asia/Dubai", "Asia/Kolkata", "Asia/Singapore", "Asia/Manila", "Asia/Seoul", "Asia/Tokyo",
+  "Australia/Brisbane", "Australia/Sydney", "Australia/Melbourne", "Pacific/Auckland", "Pacific/Guam"
+]);
+var EXTRA = { "US Eastern": "America/New_York", "US Central": "America/Chicago", "US Mountain": "America/Denver",
+  "US Arizona": "America/Phoenix", "US Pacific": "America/Los_Angeles", "US Alaska": "America/Anchorage",
+  "US Hawaii": "Pacific/Honolulu", "Japan": "Asia/Tokyo", "Okinawa": "Asia/Tokyo", "Korea": "Asia/Seoul", "Guam": "Pacific/Guam", "UK": "Europe/London" };
+function niceName(tz) { var p = tz.split("/"); return cityOf(tz) + (p.length > 1 ? " · " + p[0] : ""); }
+var NAME_TO_TZ = {};
+ZONES.forEach(function (z) { NAME_TO_TZ[niceName(z)] = z; NAME_TO_TZ[z] = z; });
+Object.keys(EXTRA).forEach(function (k) { NAME_TO_TZ[k] = EXTRA[k]; });
+(function fillList() {
+  var html = Object.keys(EXTRA).map(function (k) { return '<option value="' + k + '">'; }).join("");
+  html += ZONES.map(function (z) { return '<option value="' + niceName(z) + '">'; }).join("");
+  $("zoneList").innerHTML = html;
+})();
+function toTz(v) { v = (v || "").trim(); return NAME_TO_TZ[v] || null; }
+
+function saveWorld() { saveSet("clockin-world", wopts); applyWorld(); }
+function applyWorld() {
+  document.body.classList.toggle("no-dot", !wopts.dot);
+  document.body.classList.toggle("no-slider", !wopts.slider);
+  if (!wopts.slider) backToNow();
+  buildTiles(); render();
+}
+function cityRowsHTML() {
+  var box = $("cityRows"); box.innerHTML = "";
+  wopts.cities.forEach(function (c, i) {
+    var row = document.createElement("div"); row.className = "city-row";
+    row.innerHTML = '<input class="txt" data-f="label" aria-label="City name" placeholder="Name">' +
+      '<input class="txt" data-f="tz" list="zoneList" aria-label="Time zone" placeholder="Search a city">' +
+      '<button class="mini" data-a="up" title="Move up" aria-label="Move up">↑</button>' +
+      '<button class="mini" data-a="del" title="Remove" aria-label="Remove">✕</button>';
+    row.querySelector('[data-f="label"]').value = c.label;
+    row.querySelector('[data-f="tz"]').value = niceName(c.tz);
+    row.querySelector('[data-a="up"]').disabled = i === 0;
+    row.querySelector('[data-f="label"]').onchange = function () { c.label = this.value.trim() || cityOf(c.tz); saveWorld(); };
+    row.querySelector('[data-f="tz"]').onchange = function () {
+      var tz = toTz(this.value);
+      if (!tz) { this.value = niceName(c.tz); return; }
+      var autoName = !c.label || c.label === cityOf(c.tz);
+      c.tz = tz; if (autoName) c.label = EXTRA[this.value.trim()] ? this.value.trim() : cityOf(tz);
+      saveWorld(); cityRowsHTML();
+    };
+    row.querySelector('[data-a="up"]').onclick = function () { wopts.cities.splice(i - 1, 0, wopts.cities.splice(i, 1)[0]); saveWorld(); cityRowsHTML(); };
+    row.querySelector('[data-a="del"]').onclick = function () { wopts.cities.splice(i, 1); saveWorld(); cityRowsHTML(); };
+    box.appendChild(row);
+  });
+  $("addCity").disabled = wopts.cities.length >= 6;
+}
+$("addCity").onclick = function () {
+  if (wopts.cities.length >= 6) return;
+  wopts.cities.push({ label: "London", tz: "Europe/London" }); saveWorld(); cityRowsHTML();
+};
+$("homeZone").onchange = function () {
+  var v = this.value.trim();
+  if (!v) { wopts.homeTz = ""; saveWorld(); return; }
+  var tz = toTz(v); if (!tz) { this.value = wopts.homeTz ? niceName(wopts.homeTz) : ""; return; }
+  wopts.homeTz = tz; saveWorld();
+};
+$("homeLabel").onchange = function () { wopts.homeLabel = this.value.trim(); saveWorld(); };
+document.querySelectorAll("#hourSeg button").forEach(function (b) { b.onclick = function () { wopts.hours = b.dataset.v; saveWorld(); syncExtra(); }; });
+$("optDot").onchange = function () { wopts.dot = this.checked; saveWorld(); };
+$("optSlider").onchange = function () { wopts.slider = this.checked; saveWorld(); };
+
+function syncExtra() {
+  $("homeZone").value = wopts.homeTz ? niceName(wopts.homeTz) : "";
+  $("homeLabel").value = wopts.homeLabel;
+  segSelect("hourSeg", wopts.hours);
+  $("optDot").checked = wopts.dot; $("optSlider").checked = wopts.slider;
+  cityRowsHTML();
+}
+function resetExtra() { wopts = JSON.parse(JSON.stringify(WORLD_DEFAULT)); saveWorld(); }
+
+applyWorld();
+setInterval(render, 1000);
+</script>
+</body>
+</html>
