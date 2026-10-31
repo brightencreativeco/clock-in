@@ -203,6 +203,9 @@
     <div class="seg" id="unitSeg"><button data-v="f">°F</button><button data-v="c">°C</button></div>
     <label class="tog"><span>3-day forecast</span><input type="checkbox" id="optDays"><i></i></label>
   </div>
+  <div class="sec">
+    <p class="hint">Weather data from <a href="https://www.met.no/en" target="_blank" rel="noopener" style="color:#3D452F">MET Norway</a> (backup: <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:#3D452F">Open-Meteo.com</a>), shared under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:#3D452F">CC BY 4.0</a>. Rain amounts and "feels like" are calculated from their data. City search by <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#3D452F">© OpenStreetMap contributors</a>.</p>
+  </div>
   <button class="resetall" id="resetAll">Reset to default</button>
   <p class="saved">Saves automatically on this device.</p>
  </div>
@@ -311,12 +314,13 @@ window.addEventListener("storage", function (e) {
 applyColors();
 
 /* =========================================================
-   WEATHER SETTINGS - saved on this device
-   Weather comes from Open-Meteo (open-meteo.com): free,
-   no account or key needed.
+   WEATHER
+   Main source: MET Norway (api.met.no), free for any use with credit.
+   Backup:      Open-Meteo (open-meteo.com), used only if MET Norway fails.
+   City search: OpenStreetMap (Nominatim).
+   Everything is stored in °C and mm, then converted for display.
    ========================================================= */
 var $ = function (id) { return document.getElementById(id); };
-var DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
 var WX_DEFAULT = {
   place: null,                                   // { name, region, lat, lon } - set in the gear
   unit: /^en-US/i.test(navigator.language || "") ? "f" : "c",
@@ -325,19 +329,7 @@ var WX_DEFAULT = {
 var wx = loadSet("clockin-weather", WX_DEFAULT);
 var REFRESH = 30 * 60 * 1000;                    // update every 30 minutes
 
-/* ---------- weather codes -> words + icons ---------- */
-function kind(code) {
-  if (code === 0) return "clear";
-  if (code === 1 || code === 2) return "partly";
-  if (code === 3) return "cloudy";
-  if (code === 45 || code === 48) return "fog";
-  if (code >= 51 && code <= 57) return "drizzle";
-  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
-  if (code >= 95) return "storm";
-  return "cloudy";
-}
-var WORDS = { clear: "Clear", partly: "Partly cloudy", cloudy: "Cloudy", fog: "Foggy", drizzle: "Drizzle", rain: "Rain", snow: "Snow", storm: "Thunderstorms" };
+/* ---------- icons + words ---------- */
 var CLOUD = '<path d="M7.5 18.5h9.5a3.75 3.75 0 0 0 .4-7.48 5.5 5.5 0 0 0-10.6 1.2A3.15 3.15 0 0 0 7.5 18.5z"/>';
 var CLOUD_UP = '<path d="M7.5 15h9.5a3.75 3.75 0 0 0 .4-7.48 5.5 5.5 0 0 0-10.6 1.2A3.15 3.15 0 0 0 7.5 15z"/>';
 var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>';
@@ -352,54 +344,148 @@ function icon(k, day) {
     rain: CLOUD_UP + '<path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3"/>',
     snow: CLOUD_UP + '<path d="M9 18.5h.01M13 18.5h.01M17 18.5h.01M11 21h.01M15 21h.01"/>',
     storm: CLOUD_UP + '<path d="M13 15.5l-2.5 3.5h3l-2 3.5"/>'
-  }[k];
+  }[k] || CLOUD;
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
 }
 
+/* MET Norway weather symbols, e.g. "partlycloudy_day", "lightrainshowersandthunder_night" */
+function fromMet(code) {
+  code = code || "cloudy";
+  var day = !/_night$/.test(code), base = code.replace(/_(day|night|polartwilight)$/, "");
+  if (/thunder/.test(base)) return { kind: "storm", word: "Thunderstorms", day: day };
+  if (/snow/.test(base)) return { kind: "snow", word: /showers/.test(base) ? "Snow showers" : /light/.test(base) ? "Light snow" : "Snow", day: day };
+  if (/sleet/.test(base)) return { kind: "snow", word: "Sleet", day: day };
+  if (/rain/.test(base)) {
+    if (/showers/.test(base)) return { kind: /light/.test(base) ? "drizzle" : "rain", word: /light/.test(base) ? "Light showers" : "Showers", day: day };
+    if (/light/.test(base)) return { kind: "drizzle", word: "Light rain", day: day };
+    return { kind: "rain", word: /heavy/.test(base) ? "Heavy rain" : "Rain", day: day };
+  }
+  var map = { clearsky: { kind: "clear", word: "Clear" }, fair: { kind: "partly", word: "Mostly clear" },
+    partlycloudy: { kind: "partly", word: "Partly cloudy" }, cloudy: { kind: "cloudy", word: "Cloudy" }, fog: { kind: "fog", word: "Foggy" } };
+  var r = map[base] || { kind: "cloudy", word: "Cloudy" };
+  return { kind: r.kind, word: r.word, day: day };
+}
+/* Open-Meteo (WMO) weather codes, used only by the backup */
+function fromWmo(code, isDay) {
+  var k = code === 0 ? "clear" : code <= 2 ? "partly" : code === 3 ? "cloudy" : code <= 48 ? "fog" :
+    code <= 57 ? "drizzle" : (code <= 67 || (code >= 80 && code <= 82)) ? "rain" : (code <= 77 || code === 85 || code === 86) ? "snow" : code >= 95 ? "storm" : "cloudy";
+  var words = { clear: "Clear", partly: "Partly cloudy", cloudy: "Cloudy", fog: "Foggy", drizzle: "Drizzle", rain: "Rain", snow: "Snow", storm: "Thunderstorms" };
+  return { kind: k, word: words[k], day: isDay !== false };
+}
+
+/* "Feels like": wind chill when cold and windy, heat index when hot, otherwise the real temperature */
+function feelsLike(t, rh, windMs) {
+  var v = windMs * 3.6;
+  if (t <= 10 && v > 4.8) return 13.12 + 0.6215 * t - 11.37 * Math.pow(v, 0.16) + 0.3965 * t * Math.pow(v, 0.16);
+  if (t >= 27 && rh != null) {
+    var f = t * 9 / 5 + 32;
+    var hi = -42.379 + 2.04901523 * f + 10.14333127 * rh - 0.22475541 * f * rh - 0.00683783 * f * f - 0.05481717 * rh * rh +
+      0.00122874 * f * f * rh + 0.00085282 * f * rh * rh - 0.00000199 * f * f * rh * rh;
+    return (hi - 32) * 5 / 9;
+  }
+  return t;
+}
+function localDay(iso) { var d = new Date(iso); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+
+/* ---------- MET Norway -> one tidy model ---------- */
+function metModel(json) {
+  var ts = json.properties.timeseries, first = ts[0].data, now = first.instant.details;
+  var sym = (first.next_1_hours || first.next_6_hours || first.next_12_hours || {}).summary;
+  var days = {}, order = [];
+  ts.forEach(function (e, i) {
+    var key = localDay(e.time), d = e.data, t = d.instant.details.air_temperature;
+    if (!days[key]) { days[key] = { hi: -999, lo: 999, rain: 0, noon: null, noonGap: 99 }; order.push(key); }
+    var day = days[key];
+    day.hi = Math.max(day.hi, t); day.lo = Math.min(day.lo, t);
+    if (d.next_1_hours) day.rain += d.next_1_hours.details.precipitation_amount || 0;
+    else if (d.next_6_hours) day.rain += d.next_6_hours.details.precipitation_amount || 0;
+    var s = (d.next_6_hours || d.next_1_hours || d.next_12_hours || {}).summary;
+    var gap = Math.abs(new Date(e.time).getHours() - 12);
+    if (s && gap < day.noonGap) { day.noon = s.symbol_code; day.noonGap = gap; }
+  });
+  /* today's high, low and rain use the next 24 hours, so late evenings still show something useful */
+  var cutoff = Date.now() + 24 * 3600 * 1000, today = { hi: -999, lo: 999, rain: 0 };
+  ts.forEach(function (e) {
+    if (new Date(e.time).getTime() > cutoff) return;
+    var t = e.data.instant.details.air_temperature;
+    today.hi = Math.max(today.hi, t); today.lo = Math.min(today.lo, t);
+    if (e.data.next_1_hours) today.rain += e.data.next_1_hours.details.precipitation_amount || 0;
+  });
+  return {
+    now: { temp: now.air_temperature, feels: feelsLike(now.air_temperature, now.relative_humidity, now.wind_speed || 0), sky: fromMet(sym && sym.symbol_code) },
+    today: { hi: today.hi, lo: today.lo, rain: { mm: today.rain } },
+    days: order.slice(1, 4).map(function (k) {
+      var d = days[k]; return { date: k, sky: fromMet(d.noon), hi: d.hi, lo: d.lo, rain: { mm: d.rain } };
+    })
+  };
+}
+/* ---------- Open-Meteo (backup) -> the same model ---------- */
+function omModel(d) {
+  var c = d.current, y = d.daily;
+  return {
+    now: { temp: c.temperature_2m, feels: c.apparent_temperature, sky: fromWmo(c.weather_code, c.is_day === 1) },
+    today: { hi: y.temperature_2m_max[0], lo: y.temperature_2m_min[0], rain: { pct: y.precipitation_probability_max ? y.precipitation_probability_max[0] : null } },
+    days: [1, 2, 3].filter(function (i) { return i < y.time.length; }).map(function (i) {
+      var p = y.time[i].split("-"); return { date: +p[0] + "-" + +p[1] + "-" + +p[2], sky: fromWmo(y.weather_code[i], true), hi: y.temperature_2m_max[i], lo: y.temperature_2m_min[i],
+        rain: { pct: y.precipitation_probability_max ? y.precipitation_probability_max[i] : null } };
+    })
+  };
+}
+
+/* ---------- display helpers ---------- */
+function deg(c) { return Math.round(wx.unit === "f" ? c * 9 / 5 + 32 : c) + "°"; }
+function rainText(r) {
+  if (r.pct != null) return r.pct + "% rain";
+  if (r.mm == null) return "";
+  if (r.mm < 0.1) return "No rain";
+  return wx.unit === "f" ? (r.mm / 25.4 < 0.1 ? "<0.1 in rain" : (r.mm / 25.4).toFixed(1) + " in rain") : (r.mm < 1 ? r.mm.toFixed(1) : Math.round(r.mm)) + " mm rain";
+}
+
 /* ---------- get the weather ---------- */
-function deg(n) { return Math.round(n) + "°"; }
 function fetchWeather() {
   if (!wx.place) { return showSetup(); }
-  var p = wx.place;
-  var url = "https://api.open-meteo.com/v1/forecast?latitude=" + p.lat + "&longitude=" + p.lon +
-    "&current=temperature_2m,apparent_temperature,weather_code,is_day" +
-    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
-    "&timezone=auto&forecast_days=4" + (wx.unit === "f" ? "&temperature_unit=fahrenheit" : "");
-  fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (data) {
-      saveSet("clockin-weather-cache", { key: cacheKey(), at: Date.now(), data: data });
-      draw(data); $("status").hidden = true;
-    })
+  var lat = (+wx.place.lat).toFixed(4), lon = (+wx.place.lon).toFixed(4);   // MET Norway asks for 4 decimals max
+  fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=" + lat + "&lon=" + lon)
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (j) { gotWeather(metModel(j), "met"); })
     .catch(function () {
-      var c = loadSet("clockin-weather-cache", {});
-      if (c.key === cacheKey() && c.data) { draw(c.data); }
-      $("status").textContent = "Can't reach the weather right now. Trying again soon.";
-      $("status").hidden = false;
+      // backup source
+      fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
+        "&current=temperature_2m,apparent_temperature,weather_code,is_day" +
+        "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=4")
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (j) { gotWeather(omModel(j), "om"); })
+        .catch(function () {
+          var c = loadSet("clockin-weather-cache2", {});
+          if (c.key === cacheKey() && c.model) draw(c.model);
+          $("status").textContent = "Can't reach the weather right now. Trying again soon.";
+          $("status").hidden = false;
+        });
     });
 }
-function cacheKey() { return wx.place ? wx.place.lat + "," + wx.place.lon + "," + wx.unit : ""; }
+function gotWeather(model, source) {
+  saveSet("clockin-weather-cache2", { key: cacheKey(), at: Date.now(), model: model, source: source });
+  draw(model); $("status").hidden = true;
+}
+function cacheKey() { return wx.place ? wx.place.lat + "," + wx.place.lon : ""; }
 
-function draw(d) {
-  var cur = d.current, day = d.daily, k = kind(cur.weather_code);
-  $("icon").innerHTML = icon(k, cur.is_day === 1);
-  $("temp").textContent = deg(cur.temperature_2m);
+function draw(m) {
+  $("icon").innerHTML = icon(m.now.sky.kind, m.now.sky.day);
+  $("temp").textContent = deg(m.now.temp);
   $("place").textContent = wx.place.name;
-  $("cond").textContent = WORDS[k];
-  var rain = day.precipitation_probability_max ? day.precipitation_probability_max[0] : null;
+  $("cond").textContent = m.now.sky.word;
+  var bits = ["H " + deg(m.today.hi) + " L " + deg(m.today.lo), "Feels " + deg(m.now.feels)];
+  var rt = rainText(m.today.rain); if (rt) bits.push(rt);
   /* each piece stays on one line; wrapping only happens between pieces */
-  var bits = ["H " + deg(day.temperature_2m_max[0]) + " L " + deg(day.temperature_2m_min[0]), "Feels " + deg(cur.apparent_temperature)];
-  if (rain != null) bits.push(rain + "% rain");
   $("details").innerHTML = bits.map(function (t) { return '<span class="bit">' + t + "</span>"; }).join(" · ");
-  var html = "";
-  for (var i = 1; i <= 3 && i < day.time.length; i++) {
-    var date = new Date(day.time[i] + "T12:00:00");
-    var r = day.precipitation_probability_max ? day.precipitation_probability_max[i] : null;
-    html += '<div class="day"><span class="day-name">' + date.toLocaleDateString("en-US", { weekday: "short" }) + "</span>" +
-      '<span class="mini-icon">' + icon(kind(day.weather_code[i]), true) + "</span>" +
-      '<span class="day-temps">' + deg(day.temperature_2m_max[i]) + '<span class="lo">' + deg(day.temperature_2m_min[i]) + "</span></span>" +
-      (r != null ? '<span class="day-rain">' + r + "% rain</span>" : "") + "</div>";
-  }
-  $("days").innerHTML = html;
+  $("days").innerHTML = m.days.map(function (d) {
+    var p = d.date.split("-"), date = new Date(+p[0], p[1] - 1, +p[2], 12);
+    var r = rainText(d.rain);
+    return '<div class="day"><span class="day-name">' + date.toLocaleDateString("en-US", { weekday: "short" }) + "</span>" +
+      '<span class="mini-icon">' + icon(d.sky.kind, true) + "</span>" +
+      '<span class="day-temps">' + deg(d.hi) + '<span class="lo">' + deg(d.lo) + "</span></span>" +
+      (r ? '<span class="day-rain">' + r + "</span>" : "") + "</div>";
+  }).join("");
 }
 
 function showSetup() {
@@ -412,23 +498,24 @@ function showSetup() {
   $("setupBtn").onclick = function () { $("gear").click(); setTimeout(function () { $("cityInput").focus(); }, 50); };
 }
 
-/* ---------- gear panel: city search, units, forecast ---------- */
+/* ---------- gear panel: city search (OpenStreetMap), units, forecast ---------- */
 function searchCity() {
   var q = $("cityInput").value.trim(); if (!q) return;
   $("cityResults").innerHTML = '<p class="hint">Searching…</p>';
-  fetch("https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=" + encodeURIComponent(q))
+  fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&addressdetails=1&accept-language=en&featureType=settlement&q=" + encodeURIComponent(q))
     .then(function (r) { return r.json(); })
-    .then(function (d) {
-      var res = d.results || [];
-      if (!res.length) { $("cityResults").innerHTML = '<p class="hint">No matches. Try just the city name.</p>'; return; }
+    .then(function (res) {
+      if (!res || !res.length) { $("cityResults").innerHTML = '<p class="hint">No matches. Try just the city name.</p>'; return; }
       $("cityResults").innerHTML = "";
       res.forEach(function (c) {
+        var a = c.address || {};
+        var name = c.name || a.city || a.town || a.village || q;
+        var region = [a.state || a.county, a.country].filter(Boolean).join(", ");
         var b = document.createElement("button"); b.className = "result-btn";
-        var region = [c.admin1, c.country].filter(Boolean).join(", ");
         b.innerHTML = "<span></span> <small></small>";
-        b.querySelector("span").textContent = c.name; b.querySelector("small").textContent = region;
+        b.querySelector("span").textContent = name; b.querySelector("small").textContent = region;
         b.onclick = function () {
-          wx.place = { name: c.name, region: region, lat: c.latitude, lon: c.longitude };
+          wx.place = { name: name, region: region, lat: +c.lat, lon: +c.lon };
           saveWx(); $("cityResults").innerHTML = ""; $("cityInput").value = ""; syncExtra(); fetchWeather();
         };
         $("cityResults").appendChild(b);
@@ -439,7 +526,7 @@ function searchCity() {
 $("citySearch").onclick = searchCity;
 $("cityInput").addEventListener("keydown", function (e) { if (e.key === "Enter") searchCity(); });
 document.querySelectorAll("#unitSeg button").forEach(function (b) {
-  b.onclick = function () { wx.unit = b.dataset.v; saveWx(); syncExtra(); fetchWeather(); };
+  b.onclick = function () { wx.unit = b.dataset.v; saveWx(); syncExtra(); var c = loadSet("clockin-weather-cache2", {}); if (c.model) draw(c.model); };
 });
 $("optDays").onchange = function () { wx.days = this.checked; saveWx(); };
 
@@ -453,12 +540,12 @@ function resetExtra() { var keep = wx.place; wx = Object.assign({}, WX_DEFAULT, 
 
 /* ---------- start ---------- */
 document.body.classList.toggle("no-days", !wx.days);
-var cached = loadSet("clockin-weather-cache", {});
-if (wx.place && cached.key === cacheKey() && cached.data) draw(cached.data);   // show the last known weather instantly
+var cached = loadSet("clockin-weather-cache2", {});
+if (wx.place && cached.key === cacheKey() && cached.model) draw(cached.model);   // show the last known weather instantly
 fetchWeather();
 setInterval(fetchWeather, REFRESH);
 document.addEventListener("visibilitychange", function () {
-  var c = loadSet("clockin-weather-cache", {});
+  var c = loadSet("clockin-weather-cache2", {});
   if (!document.hidden && (!c.at || Date.now() - c.at > REFRESH)) fetchWeather();
 });
 </script>
