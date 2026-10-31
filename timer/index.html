@@ -274,7 +274,7 @@
     <label class="tog"><span>Chime when timer ends</span><input type="checkbox" id="optSound"><i></i></label>
   </div>
   <button class="resetall" id="resetAll">Reset to default</button>
-  <p class="saved">Saves automatically on this device. Colors apply to all your Clock In widgets.</p>
+  <p class="saved">Saves automatically on this device.</p>
  </div>
 </div>
 <div class="bar">
@@ -322,9 +322,9 @@
 var mode;
 var SOFT = 0.78, LINE = 0.18;
 /* =========================================================
-   SETTINGS: shared colors + panel
-   Saved in this browser (localStorage). Colors are shared by
-   every Clock In widget on the same device.
+   SETTINGS: colors + panel
+   Saved in this browser (localStorage). Each widget keeps
+   its own colors.
    ========================================================= */
 var THEMES = { dark: { bg: "#3D452F", text: "#FFFAF8" }, light: { bg: "#FFFAF8", text: "#3D452F" } };
 var COLOR_DEFAULT = { theme: "dark", bg: "#3D452F", text: "#FFFAF8" };
@@ -333,7 +333,7 @@ function loadSet(key, def) {
   catch (e) { return Object.assign({}, def); }
 }
 function saveSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
-var colors = loadSet("clockin-colors", COLOR_DEFAULT);
+var colors = loadSet("clockin-colors-timer", COLOR_DEFAULT);
 
 /* --- color math --- */
 function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -385,26 +385,26 @@ document.querySelectorAll("#themeSeg button").forEach(function (b) {
     if (b.dataset.v === "custom" && colors.theme !== "custom") {
       var c = currentColors(); colors.bg = c.bg; colors.text = c.text;   // start custom from what's showing
     }
-    colors.theme = b.dataset.v; saveSet("clockin-colors", colors); applyColors(); syncPanel();
+    colors.theme = b.dataset.v; saveSet("clockin-colors-timer", colors); applyColors(); syncPanel();
   };
 });
 function setColor(which, val) {
   val = val.trim(); if (val[0] !== "#") val = "#" + val;
   if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
-  colors[which] = val.toLowerCase(); saveSet("clockin-colors", colors); applyColors(); syncPanel();
+  colors[which] = val.toLowerCase(); saveSet("clockin-colors-timer", colors); applyColors(); syncPanel();
 }
 document.getElementById("cBg").oninput = function () { setColor("bg", this.value); };
 document.getElementById("cText").oninput = function () { setColor("text", this.value); };
 document.getElementById("hBg").onchange = function () { setColor("bg", this.value); };
 document.getElementById("hText").onchange = function () { setColor("text", this.value); };
 document.getElementById("resetAll").onclick = function () {
-  colors = Object.assign({}, COLOR_DEFAULT); saveSet("clockin-colors", colors); applyColors();
+  colors = Object.assign({}, COLOR_DEFAULT); saveSet("clockin-colors-timer", colors); applyColors();
   if (window.resetExtra) resetExtra();
   syncPanel();
 };
 /* If colors change in another widget on the same page, match them */
 window.addEventListener("storage", function (e) {
-  if (e.key === "clockin-colors") { colors = loadSet("clockin-colors", COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
+  if (e.key === "clockin-colors-timer") { colors = loadSet("clockin-colors-timer", COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
 });
 applyColors();
 
