@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- COLORS (set with the gear; these are the defaults) ---------- */
+  :root {
+    --bg: #3D452F;
+    --text: #FFFAF8;
+    --soft: rgba(255, 250, 248, 0.78);
+    --line: rgba(255, 250, 248, 0.18);
+    --hover: rgba(255, 250, 248, 0.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    color: var(--text);
+    font-family: "DM Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 10px;
+    overflow: hidden;
+  }
+
+  /* ---------- LAYOUT ----------
+     Default: today on top, the next 3 days underneath.
+     Wide + short embeds: today on the left, the next 3 days on the right. */
+  .wx {
+    height: 100%;
+    display: grid;
+    grid-template-rows: minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 8px;
+    position: relative;
+  }
+  .no-days .wx { grid-template-rows: minmax(0, 1fr); }
+  .no-days .days { display: none; }
+  @media (min-width: 600px) and (min-aspect-ratio: 5/2) {
+    .wx { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  }
+
+  /* ---------- TODAY ---------- */
+  .now {
+    display: flex; align-items: center; justify-content: center; gap: 4%;
+    padding: 8px 12px 8px 40px; min-height: 0; min-width: 0;
+  }
+  .icon { width: clamp(40px, min(18vw, 24vh), 84px); flex: none; color: var(--text); }
+  .icon svg { width: 100%; height: auto; display: block; }
+  .temp {
+    font-weight: 500; line-height: 1; letter-spacing: -0.03em;
+    font-size: clamp(34px, min(14vw, 20vh), 72px);
+  }
+  .meta { min-width: 0; }
+  .place { font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cond { font-size: clamp(15px, min(4.4vw, 5vh), 20px); font-weight: 500; line-height: 1.25; }
+  .details { font-size: 14px; color: var(--soft); line-height: 1.35; }
+  .bit { white-space: nowrap; }
+
+  /* ---------- NEXT 3 DAYS ---------- */
+  .days { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-height: 0; }
+  .day {
+    background: var(--hover); border-radius: 10px; padding: 6px 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 0; text-align: center; transition: transform .15s, background-color .15s;
+  }
+  .day:hover { transform: translateY(-1px); background: var(--line); }
+  .day-name { font-size: 13px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+  .day .mini-icon { width: clamp(22px, min(7vw, 9vh), 34px); }
+  .day .mini-icon svg { width: 100%; height: auto; display: block; }
+  .day-temps { font-size: 14px; white-space: nowrap; }
+  .day-temps .lo { color: var(--soft); margin-left: 4px; }
+  .day-rain { font-size: 12px; color: var(--soft); }
+
+  .status {
+    position: absolute; left: 0; right: 0; bottom: 0; text-align: center;
+    font-size: 12px; color: var(--soft);
+  }
+  .setup-btn {
+    font: 500 13px/1 "DM Sans", sans-serif; color: var(--bg); background: var(--text); border: 0;
+    border-radius: 999px; padding: 8px 14px; cursor: pointer; margin-top: 6px; transition: transform .15s;
+  }
+  .setup-btn:hover { transform: translateY(-1px); }
+  .result-btn {
+    display: block; width: 100%; text-align: left; font: 13px "DM Sans", sans-serif; color: #2B2F22;
+    background: none; border: 0; border-radius: 6px; padding: 7px 8px; cursor: pointer;
+  }
+  .result-btn:hover { background: rgba(43,47,34,.07); }
+  .result-btn small { color: #6B6F62; }
+  /* ---------- SETTINGS (gear + panel) ----------
+     The panel always uses its own fixed colors so it stays readable
+     no matter what colors someone picks for the widget. */
+  .gear {
+    position: fixed; top: 6px; right: 6px; z-index: 5;
+    width: 28px; height: 28px; display: grid; place-items: center;
+    background: none; border: 0; border-radius: 50%; cursor: pointer;
+    color: var(--text); opacity: .35;
+    transition: opacity .15s, transform .3s, background-color .15s;
+  }
+  .gear:hover, .gear:focus-visible { opacity: 1; transform: rotate(40deg); background: var(--line); }
+  .gear svg { width: 16px; height: 16px; }
+  .panel {
+    position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+    background: #FFFAF8; color: #2B2F22;
+    font: 13px/1.4 "DM Sans", system-ui, sans-serif; letter-spacing: 0;
+    padding: 12px 16px 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .panel-in { max-width: 420px; margin: 0 auto; }
+  .ph { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 6px; margin-bottom: 6px; }  /* X on the left: Notion's menu covers the top-right */
+  .ph .x { margin-left: -6px; }
+  .ph span { font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6B6F62; }
+  .x { background: none; border: 0; font-size: 20px; line-height: 1; color: #2B2F22; cursor: pointer; width: 28px; height: 28px; border-radius: 50%; }
+  .x:hover { background: rgba(43,47,34,.08); }
+  .sec { padding: 10px 0; border-top: 1px solid rgba(43,47,34,.12); }
+  .sl { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #6B6F62; margin-bottom: 8px; }
+  .seg { display: flex; gap: 3px; padding: 3px; background: rgba(43,47,34,.07); border-radius: 999px; margin-bottom: 8px; }
+  .seg button {
+    flex: 1; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40; background: none;
+    border: 0; border-radius: 999px; padding: 7px 8px; cursor: pointer; transition: background-color .15s;
+  }
+  .seg button:hover { background: rgba(43,47,34,.08); }
+  .seg button.on { background: #3D452F; color: #FFFAF8; }
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+  .pick { display: flex; align-items: center; gap: 6px; }
+  .pick input[type=color] {
+    width: 30px; height: 30px; padding: 0; border: 1px solid rgba(43,47,34,.2);
+    border-radius: 50%; overflow: hidden; cursor: pointer; background: none;
+  }
+  .pick input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .pick input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .pick input[type=color]::-moz-color-swatch { border: 0; border-radius: 50%; }
+  .hexin {
+    width: 82px; font: 12px "DM Mono", ui-monospace, monospace; text-transform: uppercase;
+    color: #2B2F22; background: #fff; border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px;
+  }
+  .contrast { font-size: 12px; padding: 7px 10px; border-radius: 8px; margin-top: 4px; }
+  .contrast.good { background: #E7EEDD; color: #2F4A1C; }
+  .contrast.bad { background: #FBE6DA; color: #7A2E0E; }
+  .tog { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; cursor: pointer; }
+  .tog input { position: absolute; opacity: 0; pointer-events: none; }
+  .tog i {
+    width: 34px; height: 20px; border-radius: 999px; background: rgba(43,47,34,.2);
+    position: relative; transition: background-color .15s; flex: none;
+  }
+  .tog i::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s;
+  }
+  .tog input:checked + i { background: #3D452F; }
+  .tog input:checked + i::after { transform: translateX(14px); }
+  .tog input:focus-visible + i { outline: 2px solid #3D452F; outline-offset: 2px; }
+  .resetall {
+    margin-top: 10px; width: 100%; font: 500 12px/1 "DM Sans", sans-serif; color: #4A4E40;
+    background: none; border: 1px solid rgba(43,47,34,.2); border-radius: 999px; padding: 8px; cursor: pointer;
+    transition: background-color .15s;
+  }
+  .resetall:hover { background: rgba(43,47,34,.06); }
+  .saved { font-size: 11px; color: #6B6F62; text-align: center; margin-top: 8px; }
+  .txt {
+    font: 13px "DM Sans", system-ui, sans-serif; color: #2B2F22; background: #fff;
+    border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px; min-width: 0;
+  }
+  .txt:focus { outline: 2px solid #3D452F; outline-offset: 0; }
+  .mini {
+    font: 500 13px/1 "DM Sans", sans-serif; color: #4A4E40; background: none; cursor: pointer;
+    border: 1px solid rgba(43,47,34,.2); border-radius: 6px; padding: 6px 8px; transition: background-color .15s;
+  }
+  .mini:hover { background: rgba(43,47,34,.07); }
+  .mini:disabled { opacity: .35; cursor: default; }
+  .hint { font-size: 12px; color: #6B6F62; margin-top: 6px; }
+  .gear { top: 12px; left: 12px; }
+</style>
+</head>
+<body>
+<button class="gear" id="gear" aria-label="Settings" title="Settings">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+</button>
+<div class="panel" id="panel" hidden>
+ <div class="panel-in">
+  <div class="ph"><span>Settings</span><button class="x" id="closePanel" aria-label="Close settings">×</button></div>
+  <div class="sec">
+    <p class="sl">Colors</p>
+    <div class="seg" id="themeSeg">
+      <button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="custom">Custom</button>
+    </div>
+    <div id="customBox" hidden>
+      <div class="crow"><span>Background</span><span class="pick"><input type="color" id="cBg" aria-label="Background color"><input class="hexin" id="hBg" maxlength="7" aria-label="Background hex code"></span></div>
+      <div class="crow"><span>Text</span><span class="pick"><input type="color" id="cText" aria-label="Text color"><input class="hexin" id="hText" maxlength="7" aria-label="Text hex code"></span></div>
+      <p class="contrast" id="contrast"></p>
+    </div>
+  </div>
+  <div class="sec">
+    <p class="sl">Location</p>
+    <div class="crow"><input class="txt" id="cityInput" placeholder="Type your city" style="flex:1"><button class="mini" id="citySearch">Search</button></div>
+    <div id="cityResults"></div>
+    <p class="hint" id="cityNow"></p>
+  </div>
+  <div class="sec">
+    <p class="sl">Display</p>
+    <div class="seg" id="unitSeg"><button data-v="f">°F</button><button data-v="c">°C</button></div>
+    <label class="tog"><span>3-day forecast</span><input type="checkbox" id="optDays"><i></i></label>
+  </div>
+  <button class="resetall" id="resetAll">Reset to default</button>
+  <p class="saved">Saves automatically on this device.</p>
+ </div>
+</div>
+<div class="wx" id="wx">
+  <section class="now">
+    <div class="icon" id="icon" aria-hidden="true"></div>
+    <div class="temp" id="temp">--°</div>
+    <div class="meta">
+      <p class="place" id="place">&nbsp;</p>
+      <p class="cond" id="cond">Loading the weather…</p>
+      <p class="details" id="details">&nbsp;</p>
+    </div>
+  </section>
+  <section class="days" id="days"></section>
+  <p class="status" id="status" hidden></p>
+</div>
+
+<script>
+var SOFT = 0.78, LINE = 0.18, COLOR_KEY = "clockin-colors-weather";
+/* =========================================================
+   SETTINGS: colors + panel
+   Saved in this browser (localStorage). Each widget keeps
+   its own colors (COLOR_KEY is set per widget).
+   ========================================================= */
+var THEMES = { dark: { bg: "#3D452F", text: "#FFFAF8" }, light: { bg: "#FFFAF8", text: "#3D452F" } };
+var COLOR_DEFAULT = { theme: "dark", bg: "#3D452F", text: "#FFFAF8" };
+function loadSet(key, def) {
+  try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || "{}")); }
+  catch (e) { return Object.assign({}, def); }
+}
+function saveSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+var colors = loadSet(COLOR_KEY, COLOR_DEFAULT);
+
+/* --- color math --- */
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function lum(rgb) {
+  var c = rgb.map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function ratio(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function mix(a, b, t) { return a.map(function (v, i) { return Math.round(v * t + b[i] * (1 - t)); }); }
+
+function currentColors() { return colors.theme === "custom" ? colors : THEMES[colors.theme] || THEMES.dark; }
+function applyColors() {
+  var c = currentColors(), rgb = rgbOf(c.text).join(","), r = document.documentElement.style;
+  r.setProperty("--bg", c.bg);
+  r.setProperty("--text", c.text);
+  r.setProperty("--soft", "rgba(" + rgb + "," + SOFT + ")");
+  r.setProperty("--line", "rgba(" + rgb + "," + LINE + ")");
+  r.setProperty("--hover", "rgba(" + rgb + ",0.10)");
+}
+/* Main text needs 4.5:1, the softer label text needs 3:1 (WCAG guidelines) */
+function checkContrast() {
+  var c = currentColors(), bg = rgbOf(c.bg), tx = rgbOf(c.text);
+  var ok = ratio(tx, bg) >= 4.5 && ratio(mix(tx, bg, SOFT), bg) >= 3;
+  var el = document.getElementById("contrast");
+  el.className = "contrast " + (ok ? "good" : "bad");
+  el.textContent = ok ? "✓ Easy to read" : "Hard to read. Try more difference between light and dark.";
+}
+
+/* --- panel wiring --- */
+var panel = document.getElementById("panel");
+document.getElementById("gear").onclick = function () { panel.hidden = false; syncPanel(); };
+document.getElementById("closePanel").onclick = function () { panel.hidden = true; };
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) { panel.hidden = true; e.stopImmediatePropagation(); } });
+
+function segSelect(id, val) {
+  document.querySelectorAll("#" + id + " button").forEach(function (b) { b.classList.toggle("on", b.dataset.v === val); });
+}
+function syncPanel() {
+  var c = currentColors();
+  segSelect("themeSeg", colors.theme);
+  document.getElementById("customBox").hidden = colors.theme !== "custom";
+  document.getElementById("cBg").value = c.bg; document.getElementById("hBg").value = c.bg.toUpperCase();
+  document.getElementById("cText").value = c.text; document.getElementById("hText").value = c.text.toUpperCase();
+  checkContrast();
+  if (window.syncExtra) syncExtra();
+}
+document.querySelectorAll("#themeSeg button").forEach(function (b) {
+  b.onclick = function () {
+    if (b.dataset.v === "custom" && colors.theme !== "custom") {
+      var c = currentColors(); colors.bg = c.bg; colors.text = c.text;   // start custom from what's showing
+    }
+    colors.theme = b.dataset.v; saveSet(COLOR_KEY, colors); applyColors(); syncPanel();
+  };
+});
+function setColor(which, val) {
+  val = val.trim(); if (val[0] !== "#") val = "#" + val;
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  colors[which] = val.toLowerCase(); saveSet(COLOR_KEY, colors); applyColors(); syncPanel();
+}
+document.getElementById("cBg").oninput = function () { setColor("bg", this.value); };
+document.getElementById("cText").oninput = function () { setColor("text", this.value); };
+document.getElementById("hBg").onchange = function () { setColor("bg", this.value); };
+document.getElementById("hText").onchange = function () { setColor("text", this.value); };
+document.getElementById("resetAll").onclick = function () {
+  colors = Object.assign({}, COLOR_DEFAULT); saveSet(COLOR_KEY, colors); applyColors();
+  if (window.resetExtra) resetExtra();
+  syncPanel();
+};
+/* If colors change in another widget on the same page, match them */
+window.addEventListener("storage", function (e) {
+  if (e.key === COLOR_KEY) { colors = loadSet(COLOR_KEY, COLOR_DEFAULT); applyColors(); if (!panel.hidden) syncPanel(); }
+});
+applyColors();
+
+/* =========================================================
+   WEATHER SETTINGS - saved on this device
+   Weather comes from Open-Meteo (open-meteo.com): free,
+   no account or key needed.
+   ========================================================= */
+var $ = function (id) { return document.getElementById(id); };
+var DEVICE_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+var WX_DEFAULT = {
+  place: null,                                   // { name, region, lat, lon } - set in the gear
+  unit: /^en-US/i.test(navigator.language || "") ? "f" : "c",
+  days: true
+};
+var wx = loadSet("clockin-weather", WX_DEFAULT);
+var REFRESH = 30 * 60 * 1000;                    // update every 30 minutes
+
+/* ---------- weather codes -> words + icons ---------- */
+function kind(code) {
+  if (code === 0) return "clear";
+  if (code === 1 || code === 2) return "partly";
+  if (code === 3) return "cloudy";
+  if (code === 45 || code === 48) return "fog";
+  if (code >= 51 && code <= 57) return "drizzle";
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "rain";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "snow";
+  if (code >= 95) return "storm";
+  return "cloudy";
+}
+var WORDS = { clear: "Clear", partly: "Partly cloudy", cloudy: "Cloudy", fog: "Foggy", drizzle: "Drizzle", rain: "Rain", snow: "Snow", storm: "Thunderstorms" };
+var CLOUD = '<path d="M7.5 18.5h9.5a3.75 3.75 0 0 0 .4-7.48 5.5 5.5 0 0 0-10.6 1.2A3.15 3.15 0 0 0 7.5 18.5z"/>';
+var CLOUD_UP = '<path d="M7.5 15h9.5a3.75 3.75 0 0 0 .4-7.48 5.5 5.5 0 0 0-10.6 1.2A3.15 3.15 0 0 0 7.5 15z"/>';
+var SUN = '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>';
+var MOON = '<path d="M19.5 14.2A7.5 7.5 0 1 1 9.8 4.5a6 6 0 0 0 9.7 9.7z"/>';
+function icon(k, day) {
+  var inner = {
+    clear: day ? SUN : MOON,
+    partly: (day ? '<g transform="translate(-3.5 -3.5) scale(.7)">' + SUN + "</g>" : '<g transform="translate(-2.5 -3) scale(.65)">' + MOON + "</g>") + CLOUD,
+    cloudy: CLOUD,
+    fog: '<path d="M4 9h16M6 13h12M4 17h16"/>',
+    drizzle: CLOUD_UP + '<path d="M9 18.5v1M13 18.5v1M17 18.5v1"/>',
+    rain: CLOUD_UP + '<path d="M9 17.5l-1 3M13 17.5l-1 3M17 17.5l-1 3"/>',
+    snow: CLOUD_UP + '<path d="M9 18.5h.01M13 18.5h.01M17 18.5h.01M11 21h.01M15 21h.01"/>',
+    storm: CLOUD_UP + '<path d="M13 15.5l-2.5 3.5h3l-2 3.5"/>'
+  }[k];
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + inner + "</svg>";
+}
+
+/* ---------- get the weather ---------- */
+function deg(n) { return Math.round(n) + "°"; }
+function fetchWeather() {
+  if (!wx.place) { return showSetup(); }
+  var p = wx.place;
+  var url = "https://api.open-meteo.com/v1/forecast?latitude=" + p.lat + "&longitude=" + p.lon +
+    "&current=temperature_2m,apparent_temperature,weather_code,is_day" +
+    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+    "&timezone=auto&forecast_days=4" + (wx.unit === "f" ? "&temperature_unit=fahrenheit" : "");
+  fetch(url).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (data) {
+      saveSet("clockin-weather-cache", { key: cacheKey(), at: Date.now(), data: data });
+      draw(data); $("status").hidden = true;
+    })
+    .catch(function () {
+      var c = loadSet("clockin-weather-cache", {});
+      if (c.key === cacheKey() && c.data) { draw(c.data); }
+      $("status").textContent = "Can't reach the weather right now. Trying again soon.";
+      $("status").hidden = false;
+    });
+}
+function cacheKey() { return wx.place ? wx.place.lat + "," + wx.place.lon + "," + wx.unit : ""; }
+
+function draw(d) {
+  var cur = d.current, day = d.daily, k = kind(cur.weather_code);
+  $("icon").innerHTML = icon(k, cur.is_day === 1);
+  $("temp").textContent = deg(cur.temperature_2m);
+  $("place").textContent = wx.place.name;
+  $("cond").textContent = WORDS[k];
+  var rain = day.precipitation_probability_max ? day.precipitation_probability_max[0] : null;
+  /* each piece stays on one line; wrapping only happens between pieces */
+  var bits = ["H " + deg(day.temperature_2m_max[0]) + " L " + deg(day.temperature_2m_min[0]), "Feels " + deg(cur.apparent_temperature)];
+  if (rain != null) bits.push(rain + "% rain");
+  $("details").innerHTML = bits.map(function (t) { return '<span class="bit">' + t + "</span>"; }).join(" · ");
+  var html = "";
+  for (var i = 1; i <= 3 && i < day.time.length; i++) {
+    var date = new Date(day.time[i] + "T12:00:00");
+    var r = day.precipitation_probability_max ? day.precipitation_probability_max[i] : null;
+    html += '<div class="day"><span class="day-name">' + date.toLocaleDateString("en-US", { weekday: "short" }) + "</span>" +
+      '<span class="mini-icon">' + icon(kind(day.weather_code[i]), true) + "</span>" +
+      '<span class="day-temps">' + deg(day.temperature_2m_max[i]) + '<span class="lo">' + deg(day.temperature_2m_min[i]) + "</span></span>" +
+      (r != null ? '<span class="day-rain">' + r + "% rain</span>" : "") + "</div>";
+  }
+  $("days").innerHTML = html;
+}
+
+function showSetup() {
+  $("icon").innerHTML = icon("partly", true);
+  $("temp").textContent = "";
+  $("place").textContent = "Weather";
+  $("cond").innerHTML = 'Add your city to get started.<br><button class="setup-btn" id="setupBtn">Set my city</button>';
+  $("details").textContent = "";
+  $("days").innerHTML = "";
+  $("setupBtn").onclick = function () { $("gear").click(); setTimeout(function () { $("cityInput").focus(); }, 50); };
+}
+
+/* ---------- gear panel: city search, units, forecast ---------- */
+function searchCity() {
+  var q = $("cityInput").value.trim(); if (!q) return;
+  $("cityResults").innerHTML = '<p class="hint">Searching…</p>';
+  fetch("https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=" + encodeURIComponent(q))
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var res = d.results || [];
+      if (!res.length) { $("cityResults").innerHTML = '<p class="hint">No matches. Try just the city name.</p>'; return; }
+      $("cityResults").innerHTML = "";
+      res.forEach(function (c) {
+        var b = document.createElement("button"); b.className = "result-btn";
+        var region = [c.admin1, c.country].filter(Boolean).join(", ");
+        b.innerHTML = "<span></span> <small></small>";
+        b.querySelector("span").textContent = c.name; b.querySelector("small").textContent = region;
+        b.onclick = function () {
+          wx.place = { name: c.name, region: region, lat: c.latitude, lon: c.longitude };
+          saveWx(); $("cityResults").innerHTML = ""; $("cityInput").value = ""; syncExtra(); fetchWeather();
+        };
+        $("cityResults").appendChild(b);
+      });
+    })
+    .catch(function () { $("cityResults").innerHTML = '<p class="hint">Couldn\'t search right now. Try again in a minute.</p>'; });
+}
+$("citySearch").onclick = searchCity;
+$("cityInput").addEventListener("keydown", function (e) { if (e.key === "Enter") searchCity(); });
+document.querySelectorAll("#unitSeg button").forEach(function (b) {
+  b.onclick = function () { wx.unit = b.dataset.v; saveWx(); syncExtra(); fetchWeather(); };
+});
+$("optDays").onchange = function () { wx.days = this.checked; saveWx(); };
+
+function saveWx() { saveSet("clockin-weather", wx); document.body.classList.toggle("no-days", !wx.days); }
+function syncExtra() {
+  segSelect("unitSeg", wx.unit);
+  $("optDays").checked = wx.days;
+  $("cityNow").textContent = wx.place ? "Showing: " + wx.place.name + (wx.place.region ? ", " + wx.place.region : "") : "No city set yet.";
+}
+function resetExtra() { var keep = wx.place; wx = Object.assign({}, WX_DEFAULT, { place: keep }); saveWx(); fetchWeather(); }
+
+/* ---------- start ---------- */
+document.body.classList.toggle("no-days", !wx.days);
+var cached = loadSet("clockin-weather-cache", {});
+if (wx.place && cached.key === cacheKey() && cached.data) draw(cached.data);   // show the last known weather instantly
+fetchWeather();
+setInterval(fetchWeather, REFRESH);
+document.addEventListener("visibilitychange", function () {
+  var c = loadSet("clockin-weather-cache", {});
+  if (!document.hidden && (!c.at || Date.now() - c.at > REFRESH)) fetchWeather();
+});
+</script>
+</body>
+</html>
