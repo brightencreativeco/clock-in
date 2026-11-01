@@ -126,6 +126,29 @@
 
   /* gear sits in the home box's top-left corner (Notion's menu covers the top-right) */
   .city-row { display: grid; grid-template-columns: 1fr 1.3fr auto auto; gap: 4px; margin-bottom: 6px; }
+  /* city search dropdown (in the settings panel) */
+  .zsearch { position: relative; margin-bottom: 8px; }
+  .zsearch .txt { width: 100%; }
+  .sugg {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+    background: #fff; border: 1px solid rgba(43,47,34,.18); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.12); padding: 4px; max-height: 240px; overflow-y: auto;
+  }
+  .sugg-item {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px; width: 100%;
+    font: 13px "DM Sans", sans-serif; color: #2B2F22; background: none; border: 0; border-radius: 6px;
+    padding: 7px 8px; cursor: pointer; text-align: left;
+  }
+  .sugg-item small { color: #6B6F62; font-size: 12px; white-space: nowrap; }
+  .sugg-item:hover, .sugg-item.on { background: rgba(43,47,34,.08); }
+  .sugg-empty { font-size: 12px; color: #6B6F62; padding: 7px 8px; }
+  .city-row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px; align-items: center; margin-bottom: 6px; }
+  .city-main { display: flex; flex-direction: column; min-width: 0; }
+  .city-main .name-in { border-color: transparent; background: transparent; padding: 3px 6px; font-weight: 500; }
+  .city-main .name-in:hover { border-color: rgba(43,47,34,.2); background: #fff; }
+  .city-main .name-in:focus { background: #fff; }
+  .city-main small { font-size: 12px; color: #6B6F62; padding-left: 7px; }
+  .linkish { font: inherit; color: #3D452F; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; }
   /* ---------- SETTINGS (gear + panel) ----------
      The panel always uses its own fixed colors so it stays readable
      no matter what colors someone picks for the widget. */
@@ -231,15 +254,15 @@
   </div>
   <div class="sec">
     <p class="sl">Home</p>
-    <div class="crow"><span>Time zone</span><input class="txt" id="homeZone" list="zoneList" placeholder="Auto (this device)"></div>
-    <div class="crow"><span>Name</span><input class="txt" id="homeLabel" placeholder="Auto"></div>
-    <p class="hint">Leave both blank to follow this device's time zone.</p>
+    <div class="zsearch"><input class="txt" id="homeSearch" placeholder="Search a city, state, or country…" autocomplete="off" aria-label="Search for your home city"><div class="sugg" id="homeSugg" hidden></div></div>
+    <p class="hint"><span id="homeNow"></span> <button class="linkish" id="homeDevice" hidden>Use this device instead</button></p>
+    <div class="crow"><span>Display name</span><input class="txt" id="homeLabel" placeholder="Auto"></div>
   </div>
   <div class="sec">
     <p class="sl">Cities (up to 6)</p>
+    <div class="zsearch"><input class="txt" id="citySearch" placeholder="+ Add a city: start typing…" autocomplete="off" aria-label="Search for a city to add"><div class="sugg" id="citySugg" hidden></div></div>
     <div id="cityRows"></div>
-    <button class="mini" id="addCity">+ Add a city</button>
-    <p class="hint">Can't find your city? Pick a big city in the same time zone, then rename it (for Albuquerque, pick Denver).</p>
+    <p class="hint">Click a city's name to rename it. Use ↑ to reorder.</p>
   </div>
   <div class="sec">
     <p class="sl">Display</p>
@@ -247,7 +270,6 @@
     <label class="tog"><span>Work-hours dot (9–5)</span><input type="checkbox" id="optDot"><i></i></label>
     <label class="tog"><span>Time slider</span><input type="checkbox" id="optSlider"><i></i></label>
   </div>
-  <datalist id="zoneList"></datalist>
   <button class="resetall" id="resetAll">Reset to default</button>
   <p class="saved">Saves automatically on this device.</p>
  </div>
@@ -363,12 +385,10 @@ applyColors();
 var WORLD_DEFAULT = {
   homeTz: "", homeLabel: "",            // blank = follow this device
   cities: [
-    { label: "Melbourne", tz: "Australia/Melbourne" },
+    { label: "New York", tz: "America/New_York" },
+    { label: "Los Angeles", tz: "America/Los_Angeles" },
     { label: "London", tz: "Europe/London" },
-    { label: "Seattle", tz: "America/Los_Angeles" },
-    { label: "Albuquerque", tz: "America/Denver" },
-    { label: "Austin", tz: "America/Chicago" },
-    { label: "Washington DC", tz: "America/New_York" }
+    { label: "Sydney", tz: "Australia/Sydney" }
   ],
   hours: "12", dot: true, slider: true
 };
@@ -469,26 +489,132 @@ function render() {
 
 /* =========================================================
    GEAR PANEL: home, cities, display
+   City search: a built-in list of cities, US states and military
+   spots, plus every time zone the browser knows about.
    ========================================================= */
-var ZONES = (Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [
-  "Pacific/Honolulu", "America/Anchorage", "America/Los_Angeles", "America/Denver", "America/Phoenix", "America/Chicago",
-  "America/New_York", "America/Toronto", "America/Sao_Paulo", "Europe/London", "Europe/Paris", "Europe/Berlin",
-  "Africa/Johannesburg", "Asia/Dubai", "Asia/Kolkata", "Asia/Singapore", "Asia/Manila", "Asia/Seoul", "Asia/Tokyo",
-  "Australia/Brisbane", "Australia/Sydney", "Australia/Melbourne", "Pacific/Auckland", "Pacific/Guam"
-]);
-var EXTRA = { "US Eastern": "America/New_York", "US Central": "America/Chicago", "US Mountain": "America/Denver",
-  "US Arizona": "America/Phoenix", "US Pacific": "America/Los_Angeles", "US Alaska": "America/Anchorage",
-  "US Hawaii": "Pacific/Honolulu", "Japan": "Asia/Tokyo", "Okinawa": "Asia/Tokyo", "Korea": "Asia/Seoul", "Guam": "Pacific/Guam", "UK": "Europe/London" };
-function niceName(tz) { var p = tz.split("/"); return cityOf(tz) + (p.length > 1 ? " · " + p[0] : ""); }
-var NAME_TO_TZ = {};
-ZONES.forEach(function (z) { NAME_TO_TZ[niceName(z)] = z; NAME_TO_TZ[z] = z; });
-Object.keys(EXTRA).forEach(function (k) { NAME_TO_TZ[k] = EXTRA[k]; });
-(function fillList() {
-  var html = Object.keys(EXTRA).map(function (k) { return '<option value="' + k + '">'; }).join("");
-  html += ZONES.map(function (z) { return '<option value="' + niceName(z) + '">'; }).join("");
-  $("zoneList").innerHTML = html;
+var NY = "America/New_York", CHI = "America/Chicago", DEN = "America/Denver", LA = "America/Los_Angeles", PHX = "America/Phoenix";
+var PLACES = [
+  // US states
+  ["Alabama","US state",CHI],["Alaska","US state","America/Anchorage"],["Arizona","US state",PHX],["Arkansas","US state",CHI],
+  ["California","US state",LA],["Colorado","US state",DEN],["Connecticut","US state",NY],["Delaware","US state",NY],
+  ["Florida","US state",NY],["Georgia","US state",NY],["Hawaii","US state","Pacific/Honolulu"],["Idaho","US state","America/Boise"],
+  ["Illinois","US state",CHI],["Indiana","US state","America/Indiana/Indianapolis"],["Iowa","US state",CHI],["Kansas","US state",CHI],
+  ["Kentucky","US state",NY],["Louisiana","US state",CHI],["Maine","US state",NY],["Maryland","US state",NY],
+  ["Massachusetts","US state",NY],["Michigan","US state","America/Detroit"],["Minnesota","US state",CHI],["Mississippi","US state",CHI],
+  ["Missouri","US state",CHI],["Montana","US state",DEN],["Nebraska","US state",CHI],["Nevada","US state",LA],
+  ["New Hampshire","US state",NY],["New Jersey","US state",NY],["New Mexico","US state",DEN],["New York","US state",NY],
+  ["North Carolina","US state",NY],["North Dakota","US state",CHI],["Ohio","US state",NY],["Oklahoma","US state",CHI],
+  ["Oregon","US state",LA],["Pennsylvania","US state",NY],["Rhode Island","US state",NY],["South Carolina","US state",NY],
+  ["South Dakota","US state",CHI],["Tennessee","US state",CHI],["Texas","US state",CHI],["Utah","US state",DEN],
+  ["Vermont","US state",NY],["Virginia","US state",NY],["Washington","US state",LA],["West Virginia","US state",NY],
+  ["Wisconsin","US state",CHI],["Wyoming","US state",DEN],
+  // US cities
+  ["Washington DC","US",NY],["New York City","New York",NY],["Boston","Massachusetts",NY],["Philadelphia","Pennsylvania",NY],
+  ["Pittsburgh","Pennsylvania",NY],["Baltimore","Maryland",NY],["Richmond","Virginia",NY],["Virginia Beach","Virginia",NY],
+  ["Norfolk","Virginia",NY],["Charlotte","North Carolina",NY],["Raleigh","North Carolina",NY],["Fayetteville","North Carolina",NY],
+  ["Charleston","South Carolina",NY],["Atlanta","Georgia",NY],["Savannah","Georgia",NY],["Miami","Florida",NY],
+  ["Orlando","Florida",NY],["Tampa","Florida",NY],["Jacksonville","Florida",NY],["Pensacola","Florida",CHI],
+  ["Columbus","Ohio",NY],["Cleveland","Ohio",NY],["Detroit","Michigan","America/Detroit"],["Indianapolis","Indiana","America/Indiana/Indianapolis"],
+  ["Louisville","Kentucky","America/Kentucky/Louisville"],["Nashville","Tennessee",CHI],["Memphis","Tennessee",CHI],
+  ["Chicago","Illinois",CHI],["Milwaukee","Wisconsin",CHI],["Minneapolis","Minnesota",CHI],["St. Louis","Missouri",CHI],
+  ["Kansas City","Missouri",CHI],["Omaha","Nebraska",CHI],["Oklahoma City","Oklahoma",CHI],["New Orleans","Louisiana",CHI],
+  ["Dallas","Texas",CHI],["Fort Worth","Texas",CHI],["Houston","Texas",CHI],["Austin","Texas",CHI],["San Antonio","Texas",CHI],
+  ["El Paso","Texas",DEN],["Denver","Colorado",DEN],["Colorado Springs","Colorado",DEN],["Albuquerque","New Mexico",DEN],
+  ["Salt Lake City","Utah",DEN],["Boise","Idaho","America/Boise"],["Phoenix","Arizona",PHX],["Tucson","Arizona",PHX],
+  ["Las Vegas","Nevada",LA],["Los Angeles","California",LA],["San Diego","California",LA],["San Francisco","California",LA],
+  ["San Jose","California",LA],["Sacramento","California",LA],["Portland","Oregon",LA],["Seattle","Washington",LA],
+  ["Tacoma","Washington",LA],["Spokane","Washington",LA],["Anchorage","Alaska","America/Anchorage"],["Honolulu","Hawaii","Pacific/Honolulu"],
+  // US time zones by name
+  ["US Eastern time","US",NY],["US Central time","US",CHI],["US Mountain time","US",DEN],["US Pacific time","US",LA],
+  ["US Alaska time","US","America/Anchorage"],["US Hawaii time","US","Pacific/Honolulu"],
+  // military + overseas spots
+  ["Okinawa","Japan","Asia/Tokyo"],["Iwakuni","Japan","Asia/Tokyo"],["Yokosuka","Japan","Asia/Tokyo"],["Misawa","Japan","Asia/Tokyo"],
+  ["Sasebo","Japan","Asia/Tokyo"],["Camp Humphreys","South Korea","Asia/Seoul"],["Guam","US territory","Pacific/Guam"],
+  ["Ramstein","Germany","Europe/Berlin"],["Kaiserslautern","Germany","Europe/Berlin"],["Stuttgart","Germany","Europe/Berlin"],
+  ["Vilseck","Germany","Europe/Berlin"],["Naples","Italy","Europe/Rome"],["Aviano","Italy","Europe/Rome"],["Rota","Spain","Europe/Madrid"],
+  ["Lakenheath","England","Europe/London"],["Mildenhall","England","Europe/London"],["Bahrain","Middle East","Asia/Bahrain"],
+  // world
+  ["Toronto","Canada","America/Toronto"],["Montreal","Canada","America/Toronto"],["Vancouver","Canada","America/Vancouver"],
+  ["Calgary","Canada","America/Edmonton"],["Mexico City","Mexico","America/Mexico_City"],["Cancun","Mexico","America/Cancun"],
+  ["London","England","Europe/London"],["Dublin","Ireland","Europe/Dublin"],["Paris","France","Europe/Paris"],["Berlin","Germany","Europe/Berlin"],
+  ["Amsterdam","Netherlands","Europe/Amsterdam"],["Brussels","Belgium","Europe/Brussels"],["Madrid","Spain","Europe/Madrid"],
+  ["Barcelona","Spain","Europe/Madrid"],["Lisbon","Portugal","Europe/Lisbon"],["Rome","Italy","Europe/Rome"],["Milan","Italy","Europe/Rome"],
+  ["Zurich","Switzerland","Europe/Zurich"],["Vienna","Austria","Europe/Vienna"],["Prague","Czechia","Europe/Prague"],["Warsaw","Poland","Europe/Warsaw"],
+  ["Stockholm","Sweden","Europe/Stockholm"],["Oslo","Norway","Europe/Oslo"],["Copenhagen","Denmark","Europe/Copenhagen"],
+  ["Helsinki","Finland","Europe/Helsinki"],["Athens","Greece","Europe/Athens"],["Istanbul","Turkey","Europe/Istanbul"],
+  ["Dubai","UAE","Asia/Dubai"],["Tel Aviv","Israel","Asia/Jerusalem"],["Cairo","Egypt","Africa/Cairo"],["Lagos","Nigeria","Africa/Lagos"],
+  ["Nairobi","Kenya","Africa/Nairobi"],["Johannesburg","South Africa","Africa/Johannesburg"],["Cape Town","South Africa","Africa/Johannesburg"],
+  ["Mumbai","India","Asia/Kolkata"],["Delhi","India","Asia/Kolkata"],["Bangalore","India","Asia/Kolkata"],["Singapore","Singapore","Asia/Singapore"],
+  ["Manila","Philippines","Asia/Manila"],["Bangkok","Thailand","Asia/Bangkok"],["Jakarta","Indonesia","Asia/Jakarta"],["Bali","Indonesia","Asia/Makassar"],
+  ["Kuala Lumpur","Malaysia","Asia/Kuala_Lumpur"],["Ho Chi Minh City","Vietnam","Asia/Ho_Chi_Minh"],["Hong Kong","China","Asia/Hong_Kong"],
+  ["Shanghai","China","Asia/Shanghai"],["Beijing","China","Asia/Shanghai"],["Taipei","Taiwan","Asia/Taipei"],["Seoul","South Korea","Asia/Seoul"],
+  ["Tokyo","Japan","Asia/Tokyo"],["Osaka","Japan","Asia/Tokyo"],["Sydney","Australia","Australia/Sydney"],["Melbourne","Australia","Australia/Melbourne"],
+  ["Brisbane","Australia","Australia/Brisbane"],["Perth","Australia","Australia/Perth"],["Adelaide","Australia","Australia/Adelaide"],
+  ["Auckland","New Zealand","Pacific/Auckland"],["São Paulo","Brazil","America/Sao_Paulo"],["Rio de Janeiro","Brazil","America/Sao_Paulo"],
+  ["Buenos Aires","Argentina","America/Argentina/Buenos_Aires"],["Bogotá","Colombia","America/Bogota"],["Lima","Peru","America/Lima"],
+  ["Santiago","Chile","America/Santiago"],
+  // countries with one time zone
+  ["Japan","country","Asia/Tokyo"],["South Korea","country","Asia/Seoul"],["Philippines","country","Asia/Manila"],["India","country","Asia/Kolkata"],
+  ["United Kingdom","country","Europe/London"],["Ireland","country","Europe/Dublin"],["Germany","country","Europe/Berlin"],["France","country","Europe/Paris"],
+  ["Italy","country","Europe/Rome"],["Spain","country","Europe/Madrid"],["New Zealand","country","Pacific/Auckland"],["Thailand","country","Asia/Bangkok"]
+];
+/* add every time zone the browser knows, e.g. "Kolkata (Asia)" */
+(function addZones() {
+  var have = {};
+  PLACES.forEach(function (p) { have[p[0].toLowerCase()] = 1; });
+  var zones = Intl.supportedValuesOf ? Intl.supportedValuesOf("timeZone") : [];
+  zones.forEach(function (z) {
+    var n = cityOf(z); if (have[n.toLowerCase()] || z.indexOf("/") < 0) return;
+    PLACES.push([n, z.split("/")[0], z]); have[n.toLowerCase()] = 1;
+  });
 })();
-function toTz(v) { v = (v || "").trim(); return NAME_TO_TZ[v] || null; }
+function plain(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+function nowIn(tz) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: wopts.hours !== "24" }).format(new Date());
+}
+function findPlaces(q) {
+  q = plain(q.trim()); if (!q) return [];
+  var starts = [], has = [];
+  PLACES.forEach(function (p) {
+    var n = plain(p[0]);
+    if (n.indexOf(q) === 0) starts.push(p);
+    else if (n.indexOf(q) > 0 || plain(p[1]).indexOf(q) === 0) has.push(p);
+  });
+  return starts.concat(has).slice(0, 6);
+}
+
+/* a search box with a dropdown of matches (arrow keys + Enter work too) */
+function searchBox(input, list, onPick) {
+  var hits = [], pick = 0;
+  function draw() {
+    hits = findPlaces(input.value); pick = 0;
+    if (!hits.length) {
+      list.innerHTML = input.value.trim() ? '<p class="sugg-empty">No matches. Try a nearby big city, a state, or a country.</p>' : "";
+      list.hidden = !input.value.trim(); return;
+    }
+    list.innerHTML = hits.map(function (p, i) {
+      return '<button type="button" class="sugg-item' + (i === 0 ? " on" : "") + '" data-i="' + i + '"><span></span><small></small></button>';
+    }).join("");
+    list.querySelectorAll(".sugg-item").forEach(function (b, i) {
+      b.querySelector("span").textContent = hits[i][0];
+      b.querySelector("small").textContent = hits[i][1] + " · " + nowIn(hits[i][2]);
+      b.onmousedown = function (e) { e.preventDefault(); choose(i); };
+    });
+    list.hidden = false;
+  }
+  function choose(i) { var p = hits[i]; if (!p) return; input.value = ""; list.hidden = true; onPick(p); }
+  function mark() { list.querySelectorAll(".sugg-item").forEach(function (b, i) { b.classList.toggle("on", i === pick); }); }
+  input.addEventListener("input", draw);
+  input.addEventListener("focus", function () { if (input.value.trim()) draw(); });
+  input.addEventListener("blur", function () { setTimeout(function () { list.hidden = true; }, 120); });
+  input.addEventListener("keydown", function (e) {
+    if (list.hidden || !hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); pick = Math.min(pick + 1, hits.length - 1); mark(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); pick = Math.max(pick - 1, 0); mark(); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(pick); }
+    else if (e.key === "Escape") { e.stopPropagation(); list.hidden = true; }
+  });
+}
 
 function saveWorld() { saveSet("clockin-world", wopts); applyWorld(); }
 function applyWorld() {
@@ -497,48 +623,45 @@ function applyWorld() {
   if (!wopts.slider) backToNow();
   buildTiles(); render();
 }
+
+/* home */
+searchBox($("homeSearch"), $("homeSugg"), function (p) {
+  wopts.homeTz = p[2]; wopts.homeLabel = p[0]; saveWorld(); syncExtra();
+});
+$("homeDevice").onclick = function () { wopts.homeTz = ""; wopts.homeLabel = ""; saveWorld(); syncExtra(); };
+$("homeLabel").onchange = function () { wopts.homeLabel = this.value.trim(); saveWorld(); };
+
+/* cities */
+searchBox($("citySearch"), $("citySugg"), function (p) {
+  if (wopts.cities.length >= 6) return;
+  wopts.cities.push({ label: p[0], tz: p[2] }); saveWorld(); cityRowsHTML();
+});
 function cityRowsHTML() {
   var box = $("cityRows"); box.innerHTML = "";
   wopts.cities.forEach(function (c, i) {
     var row = document.createElement("div"); row.className = "city-row";
-    row.innerHTML = '<input class="txt" data-f="label" aria-label="City name" placeholder="Name">' +
-      '<input class="txt" data-f="tz" list="zoneList" aria-label="Time zone" placeholder="Search a city">' +
+    row.innerHTML = '<div class="city-main"><input class="txt name-in" aria-label="City name"><small></small></div>' +
       '<button class="mini" data-a="up" title="Move up" aria-label="Move up">↑</button>' +
       '<button class="mini" data-a="del" title="Remove" aria-label="Remove">✕</button>';
-    row.querySelector('[data-f="label"]').value = c.label;
-    row.querySelector('[data-f="tz"]').value = niceName(c.tz);
+    row.querySelector(".name-in").value = c.label;
+    row.querySelector("small").textContent = cityOf(c.tz) + " time · " + nowIn(c.tz);
     row.querySelector('[data-a="up"]').disabled = i === 0;
-    row.querySelector('[data-f="label"]').onchange = function () { c.label = this.value.trim() || cityOf(c.tz); saveWorld(); };
-    row.querySelector('[data-f="tz"]').onchange = function () {
-      var tz = toTz(this.value);
-      if (!tz) { this.value = niceName(c.tz); return; }
-      var autoName = !c.label || c.label === cityOf(c.tz);
-      c.tz = tz; if (autoName) c.label = EXTRA[this.value.trim()] ? this.value.trim() : cityOf(tz);
-      saveWorld(); cityRowsHTML();
-    };
+    row.querySelector(".name-in").onchange = function () { c.label = this.value.trim() || cityOf(c.tz); saveWorld(); };
     row.querySelector('[data-a="up"]').onclick = function () { wopts.cities.splice(i - 1, 0, wopts.cities.splice(i, 1)[0]); saveWorld(); cityRowsHTML(); };
     row.querySelector('[data-a="del"]').onclick = function () { wopts.cities.splice(i, 1); saveWorld(); cityRowsHTML(); };
     box.appendChild(row);
   });
-  $("addCity").disabled = wopts.cities.length >= 6;
+  var full = wopts.cities.length >= 6;
+  $("citySearch").disabled = full;
+  $("citySearch").placeholder = full ? "6 cities max. Remove one to add another." : "+ Add a city: start typing…";
 }
-$("addCity").onclick = function () {
-  if (wopts.cities.length >= 6) return;
-  wopts.cities.push({ label: "London", tz: "Europe/London" }); saveWorld(); cityRowsHTML();
-};
-$("homeZone").onchange = function () {
-  var v = this.value.trim();
-  if (!v) { wopts.homeTz = ""; saveWorld(); return; }
-  var tz = toTz(v); if (!tz) { this.value = wopts.homeTz ? niceName(wopts.homeTz) : ""; return; }
-  wopts.homeTz = tz; saveWorld();
-};
-$("homeLabel").onchange = function () { wopts.homeLabel = this.value.trim(); saveWorld(); };
 document.querySelectorAll("#hourSeg button").forEach(function (b) { b.onclick = function () { wopts.hours = b.dataset.v; saveWorld(); syncExtra(); }; });
 $("optDot").onchange = function () { wopts.dot = this.checked; saveWorld(); };
 $("optSlider").onchange = function () { wopts.slider = this.checked; saveWorld(); };
 
 function syncExtra() {
-  $("homeZone").value = wopts.homeTz ? niceName(wopts.homeTz) : "";
+  $("homeNow").textContent = "Showing: " + homeLabel() + (wopts.homeTz ? "" : " (this device's time zone)");
+  $("homeDevice").hidden = !wopts.homeTz;
   $("homeLabel").value = wopts.homeLabel;
   segSelect("hourSeg", wopts.hours);
   $("optDot").checked = wopts.dot; $("optSlider").checked = wopts.slider;
