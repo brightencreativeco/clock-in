@@ -208,7 +208,7 @@
     <label class="tog"><span>3-day forecast</span><input type="checkbox" id="optDays"><i></i></label>
   </div>
   <div class="sec">
-    <p class="hint">Weather data from <a href="https://www.met.no/en" target="_blank" rel="noopener" style="color:#3D452F">MET Norway</a> (backup: <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:#3D452F">Open-Meteo.com</a>), shared under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:#3D452F">CC BY 4.0</a>. Rain amounts and "feels like" are calculated from their data. City search by <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#3D452F">© OpenStreetMap contributors</a>.</p>
+    <p class="hint">Weather data from <a href="https://www.met.no/en" target="_blank" rel="noopener" style="color:#3D452F">MET Norway</a>, shared under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener" style="color:#3D452F">CC BY 4.0</a>. Rain amounts and "feels like" are calculated from their data. City search by <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:#3D452F">© OpenStreetMap contributors</a>.</p>
   </div>
   <button class="resetall" id="resetAll">Reset to default</button>
   <p class="saved">Saves automatically on this device.</p>
@@ -320,7 +320,7 @@ applyColors();
 /* =========================================================
    WEATHER
    Main source: MET Norway (api.met.no), free for any use with credit.
-   Backup:      Open-Meteo (open-meteo.com), used only if MET Norway fails.
+   If MET Norway can't be reached, the last saved weather stays up.
    City search: OpenStreetMap (Nominatim).
    Everything is stored in °C and mm, then converted for display.
    ========================================================= */
@@ -371,14 +371,6 @@ function fromMet(code) {
   var r = map[base] || { kind: "cloudy", word: "Cloudy" };
   return { kind: r.kind, word: r.word, day: day };
 }
-/* Open-Meteo (WMO) weather codes, used only by the backup */
-function fromWmo(code, isDay) {
-  var k = code === 0 ? "clear" : code <= 2 ? "partly" : code === 3 ? "cloudy" : code <= 48 ? "fog" :
-    code <= 57 ? "drizzle" : (code <= 67 || (code >= 80 && code <= 82)) ? "rain" : (code <= 77 || code === 85 || code === 86) ? "snow" : code >= 95 ? "storm" : "cloudy";
-  var words = { clear: "Clear", partly: "Partly cloudy", cloudy: "Cloudy", fog: "Foggy", drizzle: "Drizzle", rain: "Rain", snow: "Snow", storm: "Thunderstorms" };
-  return { kind: k, word: words[k], day: isDay !== false };
-}
-
 /* "Feels like": wind chill when cold and windy, heat index when hot, otherwise the real temperature */
 function feelsLike(t, rh, windMs) {
   var v = windMs * 3.6;
@@ -425,19 +417,6 @@ function metModel(json) {
     })
   };
 }
-/* ---------- Open-Meteo (backup) -> the same model ---------- */
-function omModel(d) {
-  var c = d.current, y = d.daily;
-  return {
-    now: { temp: c.temperature_2m, feels: c.apparent_temperature, sky: fromWmo(c.weather_code, c.is_day === 1) },
-    today: { hi: y.temperature_2m_max[0], lo: y.temperature_2m_min[0], rain: { pct: y.precipitation_probability_max ? y.precipitation_probability_max[0] : null } },
-    days: [1, 2, 3].filter(function (i) { return i < y.time.length; }).map(function (i) {
-      var p = y.time[i].split("-"); return { date: +p[0] + "-" + +p[1] + "-" + +p[2], sky: fromWmo(y.weather_code[i], true), hi: y.temperature_2m_max[i], lo: y.temperature_2m_min[i],
-        rain: { pct: y.precipitation_probability_max ? y.precipitation_probability_max[i] : null } };
-    })
-  };
-}
-
 /* ---------- display helpers ---------- */
 function deg(c) { return Math.round(wx.unit === "f" ? c * 9 / 5 + 32 : c) + "°"; }
 function rainText(r) {
@@ -453,24 +432,23 @@ function fetchWeather() {
   var lat = (+wx.place.lat).toFixed(4), lon = (+wx.place.lon).toFixed(4);   // MET Norway asks for 4 decimals max
   fetch("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=" + lat + "&lon=" + lon)
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (j) { gotWeather(metModel(j), "met"); })
+    .then(function (j) { gotWeather(metModel(j)); })
     .catch(function () {
-      // backup source
-      fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
-        "&current=temperature_2m,apparent_temperature,weather_code,is_day" +
-        "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=4")
-        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(function (j) { gotWeather(omModel(j), "om"); })
-        .catch(function () {
-          var c = loadSet("clockin-weather-cache2", {});
-          if (c.key === cacheKey() && c.model) draw(c.model);
-          $("status").textContent = "Can't reach the weather right now. Trying again soon.";
-          $("status").hidden = false;
-        });
+      // MET Norway didn't answer: keep the last saved weather up and say how old it is
+      var c = loadSet("clockin-weather-cache2", {});
+      if (c.key === cacheKey() && c.model) {
+        draw(c.model);
+        var mins = Math.round((Date.now() - c.at) / 60000);
+        var age = mins < 1 ? "just now" : (mins < 60 ? mins + " min" : Math.round(mins / 60) + " hr") + " ago";
+        $("status").textContent = "Updated " + age + ". Trying again soon.";
+      } else {
+        $("status").textContent = "Can't reach the weather right now. Trying again soon.";
+      }
+      $("status").hidden = false;
     });
 }
-function gotWeather(model, source) {
-  saveSet("clockin-weather-cache2", { key: cacheKey(), at: Date.now(), model: model, source: source });
+function gotWeather(model) {
+  saveSet("clockin-weather-cache2", { key: cacheKey(), at: Date.now(), model: model });
   draw(model); $("status").hidden = true;
 }
 function cacheKey() { return wx.place ? wx.place.lat + "," + wx.place.lon : ""; }
