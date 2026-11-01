@@ -1,4 +1,11 @@
 <!doctype html>
+<!--
+  Front Desk · Calculator widget
+  © 2026 Brighten Creative Co. All rights reserved.
+  Free to embed via the link provided with Front Desk or Back Office.
+  Not licensed for copying, modification, hosting, or resale.
+  License: https://github.com/brightencreativeco/front-desk/blob/main/LICENSE
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -183,6 +190,9 @@
   }
   .resetall:hover { background: rgba(43,47,34,.06); }
   .saved { font-size: 11px; color: #6B6F62; text-align: center; margin-top: 8px; }
+  .credit { margin-top: 2px; }
+  .credit a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  .credit a:hover { color: #3D452F; }
   .display .gear { position: absolute; top: 6px; left: 6px; }
   .pickrow-off { opacity: .4; pointer-events: none; }
 </style>
@@ -219,6 +229,7 @@
   </div>
   <button class="resetall" id="resetAll">Reset to default</button>
   <p class="saved">Saves automatically on this device.</p>
+  <p class="saved credit"><a href="https://brightencreativeco.com" target="_blank" rel="noopener">Front Desk widgets · © 2026 Brighten Creative Co.</a></p>
  </div>
 </div>
 <div class="calc">
