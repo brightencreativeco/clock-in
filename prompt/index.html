@@ -126,6 +126,7 @@
   .topline { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; }
   .topline .date { margin-bottom: 0; }
   .topline .gear { position: static; margin: -6px 0; }
+  .hint { font-size: 12px; color: #6B6F62; margin-top: 6px; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -142,6 +143,10 @@
       <div class="crow"><span>Text</span><span class="pick"><input type="color" id="cText" aria-label="Text color"><input class="hexin" id="hText" maxlength="7" aria-label="Text hex code"></span></div>
       <p class="contrast" id="contrast"></p>
     </div>
+  </div>
+  <div class="sec">
+    <p class="sl">About the prompts</p>
+    <p class="hint" style="font-size:13px">There are <span id="pairCount">94</span> prompts, one a day, in order. They loop about every three months, so if one looks familiar, notice how your answer's changed.</p>
   </div>
   <button class="resetall" id="resetAll">Reset to default</button>
   <p class="saved">Saves automatically on this device.</p>
@@ -289,6 +294,7 @@
     setTimeout(render, nextMidnight - now + 1000);
   }
   render();
+  document.getElementById("pairCount").textContent = PAIRS.length;
 </script>
 <script>
 var SOFT = 0.8, LINE = 0.22;
