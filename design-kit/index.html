@@ -37,34 +37,29 @@
   }
   .kit { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
 
-  /* ---------- TABS: three equal buttons across the top ----------
-     Active tab is filled, the others are outlined so they read as buttons.
-     The left margin leaves room for the gear. */
-  .top { display: grid; gap: 6px; }
-  .tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-left: 32px; }
+  /* ---------- TABS (same as the timer) ---------- */
+  .tabs { justify-self: center; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
   .tab {
-    display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0;
-    font: 600 13px/1 "DM Sans", sans-serif; color: var(--text); white-space: nowrap;
-    background: none; border: 1.5px solid var(--soft); border-radius: 10px; padding: 9px 6px; cursor: pointer;
-    transition: background-color .15s, color .15s, border-color .15s, transform .15s;
+    font: 500 13px/1 "DM Sans", sans-serif; letter-spacing: .04em; color: var(--soft);
+    background: none; border: 0; border-radius: 999px; padding: 6px 12px; cursor: pointer;
+    transition: background-color .15s, color .15s;
   }
-  .tab .em { font-size: 14px; line-height: 1; }
-  .tab .lbl { overflow: hidden; text-overflow: ellipsis; }
-  .tab:hover { background: var(--hover); transform: translateY(-1px); }
-  .tab:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
-  .tab.on { background: var(--text); border-color: var(--text); color: var(--bg); transform: none; cursor: default; }
-  @media (max-width: 340px) { .tabs { gap: 4px; } .tab { font-size: 12px; padding: 8px 3px; gap: 3px; } .tab .em { font-size: 12px; } }
-  @media (max-width: 270px) { .tab .em { display: none; } }
-
-  /* first-open nudge: the other tabs pulse a few times and a hint shows until the first tab click */
-  .tip { font-size: 12px; color: var(--soft); text-align: center; }
+  .tab:hover { color: var(--text); background: var(--hover); }
+  .tab.on { background: var(--text); color: var(--bg); }
+  .top { justify-self: center; display: grid; justify-items: center; gap: 6px; }
+  /* labels: emoji + word, full text color so they read as options */
+  .tab { color: var(--text); }
+  .tab .em { margin-right: 4px; }
+  @media (max-width: 300px) { .tab .em { display: none; } }
+  /* narrow: smaller tabs, nudged right so the gear never sits on them */
+  @media (max-width: 340px) { .top { margin-left: 30px; } .tab { font-size: 12px; padding: 6px 8px; letter-spacing: .02em; } }
+  /* first-open nudge: the other tabs flash a few times and a hint shows until the first tab click */
+  .tip { font-size: 12px; color: var(--soft); text-align: center; max-width: 100%; }
+  .top { max-width: 100%; min-width: 0; }
   .nudge .tab:not(.on) { animation: nudge 1.4s ease-in-out .5s 3; }
-  .nudge .tab:not(.on):nth-child(3) { animation-delay: .7s; }
-  @keyframes nudge {
-    0%, 100% { box-shadow: 0 0 0 0 transparent; transform: none; }
-    45% { box-shadow: 0 0 0 4px var(--line); transform: translateY(-2px); background: var(--hover); }
-  }
-  @media (prefers-reduced-motion: reduce) { .nudge .tab:not(.on) { animation: none; } .tab:hover { transform: none; } }
+  .nudge .tab:not(.on) ~ .tab:not(.on) { animation-delay: .7s; }
+  @keyframes nudge { 0%, 100% { background: none; } 45% { background: var(--line); } }
+  @media (prefers-reduced-motion: reduce) { .nudge .tab:not(.on) { animation: none; } }
   .pane { min-height: 0; }
 
   /* shared little controls */
@@ -231,7 +226,7 @@
   .mini:hover { background: rgba(43,47,34,.07); }
   .mini:disabled { opacity: .35; cursor: default; }
   .hint { font-size: 12px; color: #6B6F62; margin-top: 6px; }
-  .gear { top: 13px; left: 8px; }
+  .gear { top: 8px; left: 8px; }
 </style>
 </head>
 <body>
@@ -260,9 +255,9 @@
 <div class="kit">
   <header class="top">
     <nav class="tabs" id="tabs" role="tablist" aria-label="Design Kit tools">
-      <button class="tab on" data-tab="contrast" role="tab"><span class="em" aria-hidden="true">🎨</span><span class="lbl">Contrast</span></button>
-      <button class="tab" data-tab="sizes" role="tab"><span class="em" aria-hidden="true">📐</span><span class="lbl">Sizes</span></button>
-      <button class="tab" data-tab="chars" role="tab"><span class="em" aria-hidden="true">🔤</span><span class="lbl">Counter</span></button>
+      <button class="tab on" data-tab="contrast" role="tab"><span class="em" aria-hidden="true">🎨</span>Contrast</button>
+      <button class="tab" data-tab="sizes" role="tab"><span class="em" aria-hidden="true">📐</span>Sizes</button>
+      <button class="tab" data-tab="chars" role="tab"><span class="em" aria-hidden="true">🔤</span>Counter</button>
     </nav>
     <p class="tip" id="tip" hidden>↑ 3 tools in one. Tap a tab to switch.</p>
   </header>
@@ -412,9 +407,8 @@ function copyText(t, btn) {
   else fallback();
 }
 
-/* ---------- tabs ----------
-   kit.tab remembers the last tab on this device.
-   kit.toured turns off the first-open nudge after the first tab click. */
+/* ---------- tabs ---------- */
+/* kit.tab remembers the last tab on this device; kit.toured turns off the first-open nudge after the first tab click */
 document.querySelectorAll(".tab").forEach(function (t) {
   t.onclick = function () {
     if (!kit.toured) { kit.toured = true; document.body.classList.remove("nudge"); $("tip").hidden = true; }
@@ -425,8 +419,7 @@ function showTab(name) {
   if (["contrast", "sizes", "chars"].indexOf(name) < 0) name = "contrast";
   kit.tab = name; saveKit();
   document.querySelectorAll(".tab").forEach(function (t) {
-    var on = t.dataset.tab === name;
-    t.classList.toggle("on", on); t.setAttribute("aria-selected", on ? "true" : "false");
+    var on = t.dataset.tab === name; t.classList.toggle("on", on); t.setAttribute("aria-selected", on ? "true" : "false");
   });
   ["contrast", "sizes", "chars"].forEach(function (n) { $("pane-" + n).hidden = n !== name; });
 }
