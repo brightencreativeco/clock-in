@@ -59,8 +59,8 @@
   }
 
   /* ---------- TABS ---------- */
+  .top { grid-area: tabs; display: grid; justify-items: center; gap: 6px; }
   .tabs {
-    grid-area: tabs;
     display: flex;
     gap: 2px;
     padding: 3px;
@@ -80,6 +80,17 @@
   }
   .tab:hover { color: var(--text); background: var(--hover); }
   .tab.on { background: var(--text); color: var(--bg); }
+  /* labels: emoji + word, full text color so they read as options */
+  .tab { color: var(--text); }
+  .tab .em { margin-right: 4px; }
+  @media (max-width: 300px) { .tab .em { display: none; } }
+  /* first-open nudge: the other tabs flash a few times and a hint shows until the first tab click */
+  .tip { font-size: 12px; color: var(--soft); text-align: center; max-width: 100%; }
+  .top { max-width: 100%; min-width: 0; }
+  .nudge .tab:not(.on) { animation: nudge 1.4s ease-in-out .5s 3; }
+  .nudge .tab:not(.on) ~ .tab:not(.on) { animation-delay: .7s; }
+  @keyframes nudge { 0%, 100% { background: none; } 45% { background: var(--line); } }
+  @media (prefers-reduced-motion: reduce) { .nudge .tab:not(.on) { animation: none; } }
 
   /* ---------- TIME ---------- */
   .time {
@@ -290,11 +301,14 @@
 </div>
 <div class="bar">
 
-  <nav class="tabs" id="tabs">
-    <button class="tab on" data-mode="timer">Timer</button>
-    <button class="tab" data-mode="stopwatch">Stopwatch</button>
-    <button class="tab" data-mode="clock" hidden>Clock</button>
-  </nav>
+  <header class="top">
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Timer modes">
+      <button class="tab on" data-mode="timer" role="tab"><span class="em" aria-hidden="true">⏳</span>Timer</button>
+      <button class="tab" data-mode="stopwatch" role="tab"><span class="em" aria-hidden="true">⏱️</span>Stopwatch</button>
+      <button class="tab" data-mode="clock" role="tab" hidden><span class="em" aria-hidden="true">🕐</span>Clock</button>
+    </nav>
+    <p class="tip" id="tip" hidden>↑ Timer and stopwatch in one. Tap to switch.</p>
+  </header>
 
   <!-- TIMER -->
   <div class="time" id="timerTime">
@@ -453,13 +467,23 @@ var $ = function (id) { return document.getElementById(id); };
 function pad(x) { return String(x).padStart(2, "0"); }
 
 /* ---------- TABS ---------- */
+/* ui.mode remembers the last tab on this device; ui.toured turns off the first-open nudge after the first tab click.
+   Kept separate from the settings so Reset to default doesn't bring the nudge back. */
+var ui = loadSet("clockin-timer-ui", { mode: "timer", toured: false });
 document.querySelectorAll(".tab").forEach(function (t) {
-  t.onclick = function () { setMode(t.dataset.mode); };
+  t.onclick = function () {
+    if (!ui.toured) { ui.toured = true; document.body.classList.remove("nudge"); $("tip").hidden = true; }
+    setMode(t.dataset.mode);
+  };
 });
 function setMode(m) {
-  mode = m;
-  document.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("on", t.dataset.mode === m); });
+  if (m === "clock" && !showClock) m = "timer";
+  mode = m; ui.mode = m; saveSet("clockin-timer-ui", ui);
+  document.querySelectorAll(".tab").forEach(function (t) {
+    var on = t.dataset.mode === m; t.classList.toggle("on", on); t.setAttribute("aria-selected", on ? "true" : "false");
+  });
   $("timerTime").hidden = $("timerExtra").hidden = m !== "timer";
+  if (m === "timer" && ruler) fitDigits();   // digits can't be measured while hidden, so size them when the tab shows
   $("swTime").hidden = $("swExtra").hidden = m !== "stopwatch";
   $("clockTime").hidden = $("clockExtra").hidden = m !== "clock";
   $("buttons").hidden = m === "clock";
@@ -668,7 +692,8 @@ fitDigits();
 showTimer(tSet);
 showStopwatch();
 showClockNow();
-setMode("timer");
+if (!ui.toured) { document.body.classList.add("nudge"); $("tip").hidden = false; }
+setMode(ui.mode || "timer");
 </script>
 </body>
 </html>
